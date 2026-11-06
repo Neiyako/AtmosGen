@@ -1,0 +1,65 @@
+=== A. inspect local ERA5 files (read-only) ===
+
+--- t: /Volumes/Untitled/2010/ERA5_025dg_20100501_temperature.nc
+    file_size=251416864 B (251.4 MB) open=0.3s
+    dims={'time': 24, 'level': 37, 'latitude': 321, 'longitude': 441}
+    coords=['longitude', 'latitude', 'level', 'time']; data_vars=['t']
+    VAR t: dims=('time', 'level', 'latitude', 'longitude') units=K long_name=Temperature
+    time_coord=time values=['2010-05-01T00:00:00.000000000' '2010-05-01T01:00:00.000000000'
+ '2010-05-01T02:00:00.000000000']..2010-05-01T23:00:00.000000000 n=24
+    level_coord=level n=37 values_head=[np.int32(1), np.int32(2), np.int32(3), np.int32(5), np.int32(7)] last=1000
+    latitude: n=321 min=-10.0 max=70.0 desc=True
+    longitude: n=441 min=50.0 max=160.0 desc=False
+
+--- q: /Volumes/Untitled/2010/ERA5_025dg_20100501_specific_humidity.nc
+    file_size=251416884 B (251.4 MB) open=0.4s
+    dims={'time': 24, 'level': 37, 'latitude': 321, 'longitude': 441}
+    coords=['longitude', 'latitude', 'level', 'time']; data_vars=['q']
+    VAR q: dims=('time', 'level', 'latitude', 'longitude') units=kg kg**-1 long_name=Specific humidity
+    time_coord=time values=['2010-05-01T00:00:00.000000000' '2010-05-01T01:00:00.000000000'
+ '2010-05-01T02:00:00.000000000']..2010-05-01T23:00:00.000000000 n=24
+    level_coord=level n=37 values_head=[np.int32(1), np.int32(2), np.int32(3), np.int32(5), np.int32(7)] last=1000
+    latitude: n=321 min=-10.0 max=70.0 desc=True
+    longitude: n=441 min=50.0 max=160.0 desc=False
+
+--- u: /Volumes/Untitled/2010/ERA5_025dg_20100501_u_component_of_wind.nc
+    file_size=251416876 B (251.4 MB) open=0.5s
+    dims={'time': 24, 'level': 37, 'latitude': 321, 'longitude': 441}
+    coords=['longitude', 'latitude', 'level', 'time']; data_vars=['u']
+    VAR u: dims=('time', 'level', 'latitude', 'longitude') units=m s**-1 long_name=U component of wind
+    time_coord=time values=['2010-05-01T00:00:00.000000000' '2010-05-01T01:00:00.000000000'
+ '2010-05-01T02:00:00.000000000']..2010-05-01T23:00:00.000000000 n=24
+    level_coord=level n=37 values_head=[np.int32(1), np.int32(2), np.int32(3), np.int32(5), np.int32(7)] last=1000
+    latitude: n=321 min=-10.0 max=70.0 desc=True
+    longitude: n=441 min=50.0 max=160.0 desc=False
+
+--- v: /Volumes/Untitled/2010/ERA5_025dg_20100501_v_component_of_wind.nc
+    file_size=251416876 B (251.4 MB) open=0.7s
+    dims={'time': 24, 'level': 37, 'latitude': 321, 'longitude': 441}
+    coords=['longitude', 'latitude', 'level', 'time']; data_vars=['v']
+    VAR v: dims=('time', 'level', 'latitude', 'longitude') units=m s**-1 long_name=V component of wind
+    time_coord=time values=['2010-05-01T00:00:00.000000000' '2010-05-01T01:00:00.000000000'
+ '2010-05-01T02:00:00.000000000']..2010-05-01T23:00:00.000000000 n=24
+    level_coord=level n=37 values_head=[np.int32(1), np.int32(2), np.int32(3), np.int32(5), np.int32(7)] last=1000
+    latitude: n=321 min=-10.0 max=70.0 desc=True
+    longitude: n=441 min=50.0 max=160.0 desc=False
+
+[TIME_CONSISTENCY] four files share identical time axis: True; n=24; range=2010-05-01T00:00:00.000000000..2010-05-01T23:00:00.000000000
+
+=== B. extract slice 2010-05-01T00..18, level [500,700,850], lat 20-45, lon 100-125 ===
+[SLICE] t<-t: dims={'time': 4, 'level': 3, 'latitude': 101, 'longitude': 101} in 0.1s min=247.983 max=301.147 mean=275.76 nan=0/122412 (0.00%)
+[SLICE] q<-q: dims={'time': 4, 'level': 3, 'latitude': 101, 'longitude': 101} in 0.1s min=6.2454e-05 max=0.0157861 mean=0.00341575 nan=0/122412 (0.00%)
+[SLICE] u<-u: dims={'time': 4, 'level': 3, 'latitude': 101, 'longitude': 101} in 0.1s min=-12.9677 max=40.6768 mean=6.54294 nan=0/122412 (0.00%)
+[SLICE] v<-v: dims={'time': 4, 'level': 3, 'latitude': 101, 'longitude': 101} in 0.1s min=-24.4553 max=21.1455 mean=-1.87776 nan=0/122412 (0.00%)
+[MERGE] dims={'longitude': 101, 'latitude': 101, 'level': 3, 'time': 4}
+[WRITE] data/raw/era5_local_slice_20100501.nc size=1002210 B (1.002 MB) in 0.3s
+[VERIFY] reopen dims={'time': 4, 'level': 3, 'latitude': 101, 'longitude': 101} vars=['t', 'q', 'u', 'v']
+[SUMMARY] wrote data/raw/era5_local_slice_SUMMARY.md
+
+=== C. cloud-water sample (clwc/ciwc) ===
+[COPY] /Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc -> data/raw/era5_cloud_sample_20240101.nc (45855 B)
+[CLOUD] dims={'valid_time': 1, 'pressure_level': 3, 'latitude': 61, 'longitude': 141} coords=['number', 'valid_time', 'pressure_level', 'latitude', 'longitude', 'expver'] data_vars=['clwc', 'ciwc']
+[CLOUD VAR] clwc: dims=('valid_time', 'pressure_level', 'latitude', 'longitude') units=kg kg**-1 long_name=Specific cloud liquid water content min=0 max=0.000166178 nan=0/25803
+[CLOUD VAR] ciwc: dims=('valid_time', 'pressure_level', 'latitude', 'longitude') units=kg kg**-1 long_name=Specific cloud ice water content min=0 max=0.000104904 nan=0/25803
+[SUMMARY] wrote data/raw/era5_cloud_sample_SUMMARY.md
+[DONE] ok

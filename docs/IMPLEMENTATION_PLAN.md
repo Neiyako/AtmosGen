@@ -457,7 +457,7 @@ atmosgen list-models
 
 ## 12. 明天（第 1 个工作日）开工清单
 
-> 已具备：`atmosgen` 环境（sdv 2.1.0/sdmetrics 0.33.0）、**本机 ERA5 归档**（`/Volumes/Untitled`，0.25°/37 层/逐时/t,q,u,v）、云水 CDS 小样本、`third_party/_ref` 五个仓库只读参考、Phase 0 文档。
+> 已具备：`atmosgen` 环境（sdv 2.1.0/sdmetrics 0.33.0 实测 PASS）、**真实数据切片已落地**（`data/raw/era5_local_slice_20100501.nc`，1.0 MB，t/q/u/v × 4 时次 × 3 层 × 101×101，NaN=0；云水 `era5_cloud_sample_20240101.nc` 含 clwc/ciwc）、`third_party/_ref` 五个仓库只读参考、Phase 0 文档。
 > 尚未完成：真实切片文件（engineer 今晚在拉取，若未完成第一个动作就是它）。
 
 | 顺序 | 动作 | 预计 | 完成标志 |

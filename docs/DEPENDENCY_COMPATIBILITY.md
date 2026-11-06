@@ -127,7 +127,7 @@ PDEBench 0.1.0    requires: torch~=1.13.0       主环境: torch 2.15.0   ✗
 
 | 数据源 | 依赖 | 访问方式 | 实测/结论 |
 |---|---|---|---|
-| **本机 ERA5 归档（主）** | `netCDF4` + `xarray`（无需网络） | `/Volumes/Untitled/{2010..2013}/ERA5_025dg_YYYYMMDD_<var>.nc`，0.25°、37 层、逐时、lat −10…70/lon 50…160，变量 t/q/u/v | 文件结构实测（`time=24, level=37, lat=321, lon=441`，单位 K / kg kg⁻¹ / m s⁻¹，≈251 MB/文件）；本地子集读取 |
+| **本机 ERA5 归档（主）** | `netCDF4` + `xarray`（无需网络） | `/Volumes/Untitled/{2010..2013}/ERA5_025dg_YYYYMMDD_<var>.nc`，0.25° 区域子集（lat −10…70/lon 50…160，321×441）、37 层、逐时、变量 t/q/u/v | 文件结构实测（`time=24, level=37, lat=321, lon=441`，≈251 MB/文件）；已产出真实切片 `data/raw/era5_local_slice_20100501.nc`（1.0 MB，4 时次×3 层×101×101，NaN=0，读写 1.3 s） |
 | 云水 CDS 小样本（已有） | `xarray` | `era5数据dbas/data/downloads/.../20240101_multi_fdb02e.nc` | 实测含 `clwc/ciwc`，`(valid_time=1, pressure_level=3, lat=61, lon=141)`，kg kg⁻¹ |
 | CDS 在线（待补 crwc/cswc） | `cdsapi` + `~/.cdsapirc`（存在性已确认，未读内容） | Copernicus CDS `reanalysis-era5-pressure-levels` | **NOT_RUN 今晚**；DBAS 已有可用配置与成本分析，Phase 1 时间盒补测 |
 | ARCO-ERA5 / WB2（备选） | `gcsfs` + `zarr` | 匿名 HTTPS | 元数据已核；但 **GCS 实测吞吐 38–83 KB/s**（单 chunk 85.2 MB），整片不可行 → 仅保留为备选（详见 `research/env/logs/p2_arco_infeasible_evidence.md`） |

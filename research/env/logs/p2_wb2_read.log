@@ -22,3 +22,5 @@ I1106 23:21:56.530944 10655080 ev_poll_posix.cc:588] FD from fork parent still i
 [COORD] time 1959-01-01T00:00:00.000000000..2021-12-31T18:00:00.000000000 n=92044
 [SELECT] 3D=['temperature', 'specific_humidity', 'u_component_of_wind', 'v_component_of_wind'] levels=[500, 700, 850] 2D=['total_column_water_vapour']
 [LOAD] temperature: {'time': 8, 'level': 3, 'longitude': 5, 'latitude': 4} in 320.5s
+/opt/miniconda3/envs/atmosgen/lib/python3.11/multiprocessing/resource_tracker.py:254: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
