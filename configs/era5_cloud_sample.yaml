@@ -1,0 +1,19 @@
+# 云水真实样本（CDS 已下载）：验证 clwc/ciwc 契约、非负约束与单位
+# 来源：era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc
+# 实测：valid_time=1, pressure_level=3, latitude=61, longitude=141
+
+project:
+  name: era5_cloud_sample
+  seed: 42
+
+source:
+  kind: local_netcdf
+  input: "/Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc"
+  vertical: pressure_level
+  variable_map:
+    clwc: clwc
+    ciwc: ciwc
+
+output:
+  processed_path: ./data/processed/era5_cloud_sample.nc
+  format: netcdf

@@ -1,0 +1,32 @@
+# Mode 3 混合生成：物理基底（tcwv）+ 统计条件生成其余变量 + 物理筛检
+project: {name: hybrid_v1, seed: 42, output_dir: ./output}
+
+data:
+  input: ./data/processed/era5_local.nc
+  variables: [t, q, u, v, clwc, ciwc, tcwv]
+  levels: [500, 700, 850]
+  subsample: {lat_step: 1.0, lon_step: 1.0}
+
+generation:
+  mode: hybrid
+  model: hybrid
+  samples: {unit: field, fields: 24}
+
+physics:
+  equation: advection_diffusion
+  grid: {nx: 64, ny: 64, dx_m: 42000, dy_m: 42000}
+  time: {dt_s: 600, steps: 96}
+  parameters: {u0: 8.0, v0: 2.0, kappa: 1.0e5}
+  initial_condition: {kind: from_real, variable: tcwv}
+  boundary_condition: {kind: open}
+
+hybrid:
+  physics_component: {enabled: true, output_variable: tcwv}
+  statistical_component: {model: gaussian_copula, trained_on: [real]}
+  screening:
+    hard_constraints: true
+    reject_ratio_limit: 0.2
+    soft_metrics: [mass_budget]
+
+validation: {statistical: true, temporal: true, spatial: true, physical: true}
+output: {format: netcdf, directory: ./output}

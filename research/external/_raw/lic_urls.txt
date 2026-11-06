@@ -1,0 +1,6 @@
+sdv_license https://raw.githubusercontent.com/sdv-dev/SDV/main/LICENSE
+sdgym_license https://raw.githubusercontent.com/sdv-dev/SDGym/main/LICENSE
+sdmetrics_license https://raw.githubusercontent.com/sdv-dev/sdmetrics/main/LICENSE
+copulas_license https://raw.githubusercontent.com/sdv-dev/Copulas/main/LICENSE
+synthcity_license https://raw.githubusercontent.com/vanderschaarlab/synthcity/main/LICENSE
+pdebench_license https://raw.githubusercontent.com/pdebench/PDEBench/main/LICENSE.txt

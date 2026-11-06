@@ -1,0 +1,18 @@
+# Mode 1 统计生成（神经 GAN 原理）—— 主实验之二，用于"两种不同原理"的对比
+project: {name: stat_ctgan, seed: 42, output_dir: ./output}
+
+data:
+  input: ./data/processed/era5_local.nc
+  variables: [t, q, u, v, clwc, ciwc, tcwv]
+  levels: [500, 700, 850]
+  subsample: {lat_step: 1.0, lon_step: 1.0}
+
+generation:
+  mode: statistical
+  model: ctgan
+  samples: {unit: cell_time, rows: 20000}
+  training: {epochs: 100, batch_size: 500, discriminator_steps: 1}
+  covariates: [hour_sin, hour_cos, level, lat_norm, lon_norm]
+
+validation: {statistical: true, temporal: true, spatial: true, physical: true}
+output: {format: netcdf, directory: ./output}

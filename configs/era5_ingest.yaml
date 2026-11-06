@@ -1,0 +1,33 @@
+# Phase 1：真实数据 ingest —— 本机 ERA5 归档切片 → 统一数据契约 NetCDF
+# 原始归档只读（外置卷），本流程只抽取小切片写到 data/raw 与 data/processed。
+# 单文件实测：time=24, level=37, lat=321, lon=441，≈251MB；变量 t/q/u/v。
+
+project:
+  name: era5_ingest_local
+  seed: 42
+
+source:
+  kind: local_era5
+  root: "/Volumes/Untitled"
+  years: [2010]
+  date_range: ["2010-05-01", "2010-05-04"]        # 逐日文件，按天拼时间轴
+  file_pattern: "ERA5_025dg_{date:%Y%m%d}_{variable}.nc"   # 例如 ERA5_025dg_20100501_temperature.nc
+  vertical: pressure_level                        # level 单位 hPa（37 层）
+  variable_map:                                   # 契约名 -> 文件内变量名
+    t: temperature
+    q: specific_humidity
+    u: u_component_of_wind
+    v: v_component_of_wind
+  subset:
+    levels: [500, 700, 850]
+    latitude: [20, 45]
+    longitude: [100, 125]
+    time_step_hours: 6                            # 0/6/12/18 时
+  derive:
+    tcwv: {method: vertical_integral_q, formula: "tcwv = (1/g) * integral(q dp)", levels_covers: "1000..1 hPa (37 levels)"}
+
+output:
+  raw_path: ./data/raw/era5_local_slice.nc
+  processed_path: ./data/processed/era5_local.nc
+  format: netcdf
+  read_only_assertion: true                        # 写入 data/raw 以外的源目录应被拒绝

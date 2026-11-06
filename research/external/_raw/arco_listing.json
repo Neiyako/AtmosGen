@@ -1,0 +1,24 @@
+{
+  "kind": "storage#objects",
+  "prefixes": [
+    "ar/1959-2022-1h-240x121_equiangular_with_poles_conservative.zarr/",
+    "ar/1959-2022-1h-360x181_equiangular_with_poles_conservative.zarr/",
+    "ar/1959-2022-6h-128x64_equiangular_conservative.zarr/",
+    "ar/1959-2022-6h-128x64_equiangular_with_poles_conservative.zarr/",
+    "ar/1959-2022-6h-1440x721.zarr/",
+    "ar/1959-2022-6h-240x121_equiangular_with_poles_conservative.zarr/",
+    "ar/1959-2022-6h-512x256_equiangular_conservative.zarr/",
+    "ar/1959-2022-6h-64x32_equiangular_conservative.zarr/",
+    "ar/1959-2022-6h-64x32_equiangular_with_poles_conservative.zarr/",
+    "ar/1959-2022-full_37-1h-0p25deg-chunk-1.zarr-v2/",
+    "ar/1959-2022-full_37-6h-0p25deg-chunk-1.zarr-v2/",
+    "ar/1959-2022-full_37-6h-0p25deg_derived.zarr/",
+    "ar/1959-2022-wb13-6h-0p25deg-chunk-1.zarr-v2/",
+    "ar/1959-2023_01_10-6h-64x32_equiangular_conservative.zarr/",
+    "ar/1959-2023_01_10-full_37-1h-0p25deg-chunk-1.zarr/",
+    "ar/1959-2023_01_10-full_37-1h-1440x721.zarr/",
+    "ar/full_37-1h-0p25deg-chunk-1.zarr-v3/",
+    "ar/model-level-1h-0p25deg.zarr-v1/",
+    "ar/model-level-1h-0p25deg.zarr-v2/"
+  ]
+}

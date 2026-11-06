@@ -1,0 +1,18 @@
+# 数据（原始只读 / 生成产物不入库）
+data/raw/*
+data/processed/*
+output/
+# 第三方只读参考仓库（不入库，按 docs/THIRD_PARTY_AUDIT.md §1.1 的 commit 重新 clone）
+third_party/_ref/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+# 系统
+.DS_Store

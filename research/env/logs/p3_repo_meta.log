@@ -1,0 +1,107 @@
+################ SDV
+HEAD=549dc94e49e73103487b3dbc324abcc43c8bfcc0
+DATE=2026-11-05 11:42:21 +0000 SUBJ=Metadata's `validate_data` should produce a warning when the real data
+DEPTH=1 commits
+LICENSE_FILE=LICENSE 
+LICENSE_FIRST_LINES:
+   Business Source License 1.1
+   
+   Parameters
+PYTHON_REQ:
+   requires-python = '>=3.10,<3.15'
+ENTRY=sdv/ (top-level pkg)
+   __init__.py
+   _utils.py
+   cag
+   data_processing
+   datasets
+   errors.py
+   evaluation
+   io
+SIZE=7.4M
+
+################ synthcity
+HEAD=23f322fe381326ed01c41b13d469a06e38cce545
+DATE=2025-06-17 09:40:31 +0100 SUBJ=update decaf pin (#339)
+DEPTH=1 commits
+LICENSE_FILE=LICENSE 
+LICENSE_FIRST_LINES:
+                                    Apache License
+                              Version 2.0, January 2004
+                           http://www.apache.org/licenses/
+PYTHON_REQ:
+   python_requires = >=3.9
+ENTRY=synthcity/src/synthcity/plugins/core/plugin.py
+   __init__.py
+   constraints.py
+   dataloader.py
+   dataset.py
+   distribution.py
+   models
+VERSION=__version__ = "0.2.12"
+SIZE=5.6M
+
+################ SDGym
+HEAD=009a35b2875ef6743ad3a713ee1a979b6df86e04
+DATE=2026-11-04 13:36:51 -0500 SUBJ=Bump version: 0.16.1 → 0.16.2.dev0
+DEPTH=1 commits
+LICENSE_FILE=LICENSE 
+LICENSE_FIRST_LINES:
+   Business Source License 1.1
+   
+   Parameters
+PYTHON_REQ:
+   requires-python = '>=3.10,<3.15'
+ENTRY=sdgym/
+   __init__.py
+   _benchmark
+   _benchmark_launcher
+   _dataset_utils.py
+   benchmark.py
+   cli
+SIZE=4.3M
+
+################ PDEBench
+HEAD=4ff3e3a4aa1561721b5571fa3a048a0a463e0568
+DATE=2026-03-30 10:27:30 +0200 SUBJ=bug fix on 2026-03-30
+DEPTH=1 commits
+LICENSE_FILE=LICENSE.txt 
+LICENSE_FIRST_LINES:
+   Except where otherwise stated this code is released under the MIT license.
+   
+       Copyright 2022 NEC Labs Europe GmbH, Stuttgart University, CSIRO and PDEbench contributors
+PYTHON_REQ:
+   requires-python = ">=3.9,<3.11"
+ENTRY=pdebench/data_gen/
+   configs
+   data_gen_NLE
+   example.env
+   gen_diff_react.py
+   gen_diff_sorp.py
+   gen_ns_incomp.py
+   gen_radial_dam_break.py
+   notebooks
+SIZE=3.3M
+
+################ RealPDEBench
+HEAD=06ba38d2db3e78edc2556ff7d9098119a42c2b07
+DATE=2026-11-04 20:52:31 +0800 SUBJ=Update README
+DEPTH=1 commits
+LICENSE_FILE=LICENSE 
+LICENSE_FIRST_LINES:
+   Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)
+   
+   This repository is released under the CC BY-NC 4.0 license (non-commercial use only).
+PYTHON_REQ:
+   requires-python = ">=3.10"
+ENTRY=realpdebench/eval.py + realpdebench/utils/metrics.py
+   __init__.py
+   __main__.py
+   cli.py
+   configs
+   data
+   eval.py
+   hf_download.py
+   model
+SIZE= 25M
+

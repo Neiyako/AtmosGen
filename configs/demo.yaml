@@ -1,0 +1,37 @@
+# AtmosGen 示例配置（任务书 §7 的接口复现 + AtmosGen 实际扩展字段）
+# 说明：这是配置 schema 的设计样例，Phase 1 起由 atmosgen.config 校验；
+#       当前（Phase 0）尚未实现，不能直接运行。
+
+project:
+  name: atmosgen_demo
+  seed: 42
+  output_dir: ./output
+
+data:
+  input: ./data/processed/era5_local.nc
+  format: auto                     # auto | netcdf | zarr
+  variables: [t, q, u, v, clwc]
+  chunks: {time: 24, latitude: 50, longitude: 50}
+  # 可选：时间/层/空间子集（不填 = 全量）
+  # time_range: ["2020-01-01T00", "2020-01-02T18"]
+  # levels: [500, 700, 850]
+  # spatial_extent: {lat: [20, 45], lon: [100, 125]}
+
+generation:
+  mode: statistical                # statistical | physics | hybrid
+  model: gaussian_copula           # gaussian_copula | ctgan | tvae | advection_diffusion | hybrid
+  samples:
+    unit: cell_time                # cell_time（表格行样本）| field（整场样本，表格模型默认不支持）
+    rows: 10000                    # 表格行样本数；不等于时空场数量（见 docs/DATA_SCHEMA.md）
+  training: {epochs: 100, batch_size: 500}
+
+validation:
+  statistical: true
+  temporal: true
+  spatial: true
+  physical: true
+
+output:
+  format: netcdf                   # netcdf | zarr
+  directory: ./output
+  compression: {zlib: true, complevel: 4}

@@ -1,0 +1,49 @@
+I1106 23:17:47.673708 10647367 fork_posix.cc:71] Other threads are currently calling into gRPC, skipping fork() handlers
+I1106 23:17:47.677601 10647463 ev_poll_posix.cc:588] FD from fork parent still in poll list: fd(15, generation: 1)
+[OPEN] xr.open_zarr in 11.3s dims={'time': 1323648, 'latitude': 721, 'longitude': 1440, 'level': 37} nvars=273
+[TIME] coordinate read 1323648 values in 0.0s; first=1900-01-01T00:00:00.000000000 last=2050-12-31T23:00:00.000000000
+[INDEX] target=2020-01-01T00 -> idx=1051896 actual=2020-01-01T00:00:00.000000000
+Traceback (most recent call last):
+  File "/Users/apple/Desktop/Atmospheric Data Generation/research/env/probe_arco_read.py", line 44, in <module>
+    info = fs.info(chunk_obj)
+           ^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/fsspec/asyn.py", line 217, in wrapper
+    return sync(self.loop, func, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/fsspec/asyn.py", line 106, in sync
+    raise return_result
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/fsspec/asyn.py", line 59, in _runner
+    result[0] = await coro
+                ^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 1248, in _info
+    return await get_directory_info_task
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/extended_gcsfs.py", line 1048, in _get_directory_info
+    return await super()._get_directory_info(path, bucket, key, generation)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 1254, in _get_directory_info
+    out = await self._list_objects(path, max_results=1)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/extended_gcsfs.py", line 775, in _list_objects
+    return await super()._list_objects(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 800, in _list_objects
+    return [await self._get_object(path)]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 733, in _get_object
+    res = await self._call(
+          ^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 653, in _call
+    status, headers, info, contents = await self._request(
+                                      ^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/decorator/__init__.py", line 237, in fun
+    return await caller(func, *(extras + args), **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/retry.py", line 156, in retry_request
+    return await func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/core.py", line 646, in _request
+    validate_response(status, contents, path, args)
+  File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/gcsfs/retry.py", line 114, in validate_response
+    raise FileNotFoundError(path)
+FileNotFoundError: b/gcp-public-data-arco-era5/o/ar%2Ffull_37-1h-0p25deg-chunk-1.zarr-v3%2Ftemperature%2F1051896.0.0

@@ -1,0 +1,18 @@
+# Mode 1 统计生成（Copula 原理）—— 主实验之一
+project: {name: stat_gaussian_copula, seed: 42, output_dir: ./output}
+
+data:
+  input: ./data/processed/era5_local.nc
+  variables: [t, q, u, v, clwc, ciwc, tcwv]
+  levels: [500, 700, 850]
+  chunks: {time: 6, latitude: 50, longitude: 50}
+  subsample: {lat_step: 1.0, lon_step: 1.0}   # 1° 抽样，控制表格规模
+
+generation:
+  mode: statistical
+  model: gaussian_copula
+  samples: {unit: cell_time, rows: 20000}
+  covariates: [hour_sin, hour_cos, level, lat_norm, lon_norm]
+
+validation: {statistical: true, temporal: true, spatial: true, physical: true}
+output: {format: netcdf, directory: ./output}

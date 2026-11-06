@@ -1,0 +1,48 @@
++ cd '/Users/apple/Desktop/Atmospheric Data Generation/third_party/_ref'
++ for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
+++ basename sdv-dev/SDV
++ name=SDV
++ echo '=== CLONE sdv-dev/SDV -> SDV ==='
+=== CLONE sdv-dev/SDV -> SDV ===
++ git clone --depth 1 https://github.com/sdv-dev/SDV.git SDV
+Cloning into 'SDV'...
++ echo CLONE_EXIT_SDV=0
+CLONE_EXIT_SDV=0
++ for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
+++ basename vanderschaarlab/synthcity
++ name=synthcity
++ echo '=== CLONE vanderschaarlab/synthcity -> synthcity ==='
+=== CLONE vanderschaarlab/synthcity -> synthcity ===
++ git clone --depth 1 https://github.com/vanderschaarlab/synthcity.git synthcity
+Cloning into 'synthcity'...
++ echo CLONE_EXIT_synthcity=0
+CLONE_EXIT_synthcity=0
++ for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
+++ basename sdv-dev/SDGym
++ name=SDGym
++ echo '=== CLONE sdv-dev/SDGym -> SDGym ==='
+=== CLONE sdv-dev/SDGym -> SDGym ===
++ git clone --depth 1 https://github.com/sdv-dev/SDGym.git SDGym
+Cloning into 'SDGym'...
++ echo CLONE_EXIT_SDGym=0
+CLONE_EXIT_SDGym=0
++ for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
+++ basename pdebench/PDEBench
++ name=PDEBench
++ echo '=== CLONE pdebench/PDEBench -> PDEBench ==='
+=== CLONE pdebench/PDEBench -> PDEBench ===
++ git clone --depth 1 https://github.com/pdebench/PDEBench.git PDEBench
+Cloning into 'PDEBench'...
++ echo CLONE_EXIT_PDEBench=0
+CLONE_EXIT_PDEBench=0
++ for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
+++ basename AI4Science-WestlakeU/RealPDEBench
++ name=RealPDEBench
++ echo '=== CLONE AI4Science-WestlakeU/RealPDEBench -> RealPDEBench ==='
+=== CLONE AI4Science-WestlakeU/RealPDEBench -> RealPDEBench ===
++ git clone --depth 1 https://github.com/AI4Science-WestlakeU/RealPDEBench.git RealPDEBench
+Cloning into 'RealPDEBench'...
++ echo CLONE_EXIT_RealPDEBench=0
+CLONE_EXIT_RealPDEBench=0
++ echo '=== ALL DONE ==='
+=== ALL DONE ===

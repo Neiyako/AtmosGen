@@ -1,0 +1,18 @@
+# Mode 2 物理仿真：2D advection-diffusion（最小自研，对解析解验证）
+project: {name: physics_advection, seed: 42, output_dir: ./output}
+
+generation:
+  mode: physics
+  model: advection_diffusion
+  samples: {unit: field, fields: 24}
+
+physics:
+  equation: advection_diffusion
+  grid: {nx: 64, ny: 64, dx_m: 42000, dy_m: 42000}
+  time: {dt_s: 600, steps: 96}
+  parameters: {u0: 8.0, v0: 2.0, kappa: 1.0e5}
+  initial_condition: {kind: gaussian_plume, center: [32.5, 112.5], sigma_deg: 1.5, amplitude: 1.0}
+  boundary_condition: {kind: periodic}
+
+validation: {physical: true, temporal: true, spatial: true}
+output: {format: netcdf, directory: ./output}

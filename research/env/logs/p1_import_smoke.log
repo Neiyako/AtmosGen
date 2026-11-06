@@ -1,0 +1,20 @@
+python: 3.11.15 (main, Mar 11 2026, 17:14:47) [Clang 20.1.8 ]
+OK numpy        2.4.6
+OK pandas       2.3.3
+OK xarray       2026.9.0
+OK zarr         3.1.6
+OK dask         2026.8.0
+OK gcsfs        2026.10.1
+OK yaml         6.0.3
+OK pydantic     2.14.3
+OK typer        0.28.0
+OK scipy        1.17.1
+OK sklearn      1.9.1
+OK matplotlib   3.11.2
+OK pytest       9.2.0
+OK sdv          2.1.0
+OK sdmetrics    0.33.0
+OK netCDF4      1.7.5.1.post1
+OK torch        2.15.0
+OK fsspec       2026.9.0
+IMPORT_SMOKE_EXIT=0 (failures=0)

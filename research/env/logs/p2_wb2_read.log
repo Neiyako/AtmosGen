@@ -1,0 +1,24 @@
+=== package versions ===
+numpy==2.4.6
+pandas==2.3.3
+xarray==2026.9.0
+zarr==3.1.6
+dask==2026.8.0
+gcsfs==2026.10.1
+netCDF4==1.7.5.1.post1
+fsspec==2026.9.0
+
+=== SOURCE gs://weatherbench2/datasets/era5/1959-2022-6h-64x32_equiangular_conservative.zarr
+I1106 23:21:56.526148 10654944 fork_posix.cc:71] Other threads are currently calling into gRPC, skipping fork() handlers
+I1106 23:21:56.530944 10655080 ev_poll_posix.cc:588] FD from fork parent still in poll list: fd(16, generation: 1)
+[XARRAY] open_zarr(consolidated=True) in 9.3s dims={'time': 92044, 'longitude': 64, 'latitude': 32, 'level': 13} nvars=38
+[VARS] ['10m_u_component_of_wind', '10m_v_component_of_wind', '10m_wind_speed', '2m_temperature', 'angle_of_sub_gridscale_orography', 'anisotropy_of_sub_gridscale_orography', 'geopotential', 'geopotential_at_surface', 'high_vegetation_cover', 'lake_cover', 'lake_depth', 'land_sea_mask', 'low_vegetation_cover', 'mean_sea_level_pressure', 'sea_ice_cover', 'sea_surface_temperature', 'slope_of_sub_gridscale_orography', 'soil_type', 'specific_humidity', 'standard_deviation_of_filtered_subgrid_orography', 'standard_deviation_of_orography', 'surface_pressure', 'temperature', 'toa_incident_solar_radiation', 'toa_incident_solar_radiation_12hr', 'toa_incident_solar_radiation_24hr', 'toa_incident_solar_radiation_6hr', 'total_cloud_cover', 'total_column_water_vapour', 'total_precipitation_12hr', 'total_precipitation_24hr', 'total_precipitation_6hr', 'type_of_high_vegetation', 'type_of_low_vegetation', 'u_component_of_wind', 'v_component_of_wind', 'vertical_velocity', 'wind_speed']
+[COVERAGE] present_short=['t', 'q', 'u', 'v', 'tcwv']
+[COVERAGE] missing_short=['clwc', 'ciwc', 'crwc', 'cswc']
+[COVERAGE] mapping={'t': 'temperature', 'q': 'specific_humidity', 'u': 'u_component_of_wind', 'v': 'v_component_of_wind', 'tcwv': 'total_column_water_vapour'}
+[COORD] latitude descending=False -87.18750000000003..87.18750000000003 n=32
+[COORD] longitude 0.0..354.375 n=64
+[COORD] levels=[np.int64(50), np.int64(100), np.int64(150), np.int64(200), np.int64(250), np.int64(300), np.int64(400), np.int64(500), np.int64(600), np.int64(700), np.int64(850), np.int64(925), np.int64(1000)]
+[COORD] time 1959-01-01T00:00:00.000000000..2021-12-31T18:00:00.000000000 n=92044
+[SELECT] 3D=['temperature', 'specific_humidity', 'u_component_of_wind', 'v_component_of_wind'] levels=[500, 700, 850] 2D=['total_column_water_vapour']
+[LOAD] temperature: {'time': 8, 'level': 3, 'longitude': 5, 'latitude': 4} in 320.5s
