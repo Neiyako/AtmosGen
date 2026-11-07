@@ -138,6 +138,16 @@ def run_generation(
             seed=seed,
             spec=spec,
         )
+    if mode == "hybrid":
+        return _run_hybrid(
+            config,
+            config_path=config_path,
+            overwrite=overwrite,
+            run_dir=run_dir,
+            data_path=data_path,
+            seed=seed,
+            spec=spec,
+        )
     raise NotImplementedInPhase(mode, model_name, MODELS[model_name].phase)
 
 
@@ -298,6 +308,89 @@ def _run_physics(
             "model": generator_cls.name,
             "seed": seed,
             "real_dataset": trained_from,
+        }
+    )
+    write_json(run_dir / "metadata.json", metadata)
+    return RunOutcome(
+        run_dir=run_dir,
+        data_path=written,
+        contract=result.contract,
+        status="ok",
+        metadata=metadata,
+    )
+
+
+def _run_hybrid(
+    config: GenerationConfigFile,
+    *,
+    config_path: str | Path | None,
+    overwrite: bool,
+    run_dir: Path,
+    data_path: Path,
+    seed: int,
+    spec: Any,
+) -> RunOutcome:
+    """Mode 3: physics base + conditional generation + physical screening."""
+
+    from .generators.hybrid_adapter import HybridGenerator
+
+    data_cfg = config.data
+    if data_cfg is None:
+        raise GenerationError("mode=hybrid 需要 data 段（训练统计模型 + 物理基底初值）")
+    real_path = Path(data_cfg.input)
+    if not real_path.exists():
+        raise FileNotFoundError(f"data.input={real_path} 不存在；先运行 atmosgen ingest")
+    handle = open_source(real_path, chunks=None)
+    try:
+        real = select_subset(
+            handle,
+            variables=list(data_cfg.variables),
+            time_range=data_cfg.time_range,
+            levels=data_cfg.levels,
+            spatial_extent=data_cfg.spatial_extent,
+        ).load()
+    finally:
+        handle.close()
+    trained_from = _trained_from(real_path, real)
+
+    generator_cls = spec.factory()
+    generator = generator_cls(
+        config,
+        seed=seed,
+        config_path=str(config_path) if config_path else None,
+        config_sha256=config_sha256(config_path) if config_path else None,
+        trained_from=trained_from,
+    )
+    try:
+        generator.fit(real)
+        result = generator.sample()
+    except Exception as exc:  # noqa: BLE001 - wrap into a runtime error with context
+        from .hybrid import HybridError
+
+        if isinstance(exc, HybridError):
+            raise GenerationError(str(exc)) from exc
+        raise
+
+    written = save_canonical(
+        result.dataset,
+        data_path,
+        contract=result.contract,
+        format=config.output.format,
+        compression=config.output.compression.model_dump(),
+        overwrite=overwrite,
+    )
+    rejected_path = run_dir / "rejected.jsonl"
+    if hasattr(generator, "write_rejected"):
+        generator.write_rejected(rejected_path)
+    metadata = dict(result.metadata)
+    metadata.update(
+        {
+            "run_id": run_dir.name,
+            "mode": "hybrid",
+            "model": generator_cls.name,
+            "seed": seed,
+            "real_dataset": trained_from,
+            "rejected_path": str(rejected_path) if rejected_path.exists() else None,
         }
     )
     write_json(run_dir / "metadata.json", metadata)

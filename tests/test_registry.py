@@ -49,10 +49,9 @@ def test_registry_report_phase_status():
     report = registry_report()
     assert all(entry["phase"] >= 2 for entry in report)
     by_name = {entry["name"]: entry for entry in report}
-    # Phase 2: statistical trio; Phase 3: physics; Phase 4: hybrid pending
-    for name in ("gaussian_copula", "ctgan", "tvae", "advection_diffusion"):
+    # Phases 2–4 are all implemented now; no NOT_RUN model remains
+    for name in ("gaussian_copula", "ctgan", "tvae", "advection_diffusion", "hybrid"):
         assert by_name[name]["implemented"] is True, name
-    assert by_name["hybrid"]["implemented"] is False
 
 
 def test_base_generator_requires_lifecycle_implementation():

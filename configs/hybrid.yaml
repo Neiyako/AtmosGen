@@ -1,28 +1,35 @@
-# Mode 3 混合生成：物理基底（tcwv）+ 统计条件生成其余变量 + 物理筛检
+# Mode 3 混合生成：物理基底（tcwv 输运）+ SDV 条件生成 + 物理硬约束筛检
+#   ① 物理求解器把真实 tcwv 平流/扩散成物理基底
+#   ② 统计模型按已知 tcwv 条件生成 t/q/u/v
+#   ③ 逐格点硬约束筛检（有限/非负/范围/饱和），不合格写入 rejected.jsonl
 project: {name: hybrid_v1, seed: 42, output_dir: ./output}
 
 data:
   input: ./data/processed/era5_local.nc
-  variables: [t, q, u, v, clwc, ciwc, tcwv]
+  variables: [t, q, u, v, tcwv]
   levels: [500, 700, 850]
-  subsample: {lat_step: 1.0, lon_step: 1.0}
+  spatial_extent: {lat: [20, 45], lon: [100, 125]}
+  chunks: {time: 6, latitude: 50, longitude: 50}
+  subsample: {lat_step: 1.0, lon_step: 1.0}   # 1° 抽样，控制统计模型训练规模
 
 generation:
   mode: hybrid
   model: hybrid
-  samples: {unit: field, fields: 24}
+  samples: {unit: cell_time, rows: 20000}
 
 physics:
   equation: advection_diffusion
-  grid: {nx: 64, ny: 64, dx_m: 42000, dy_m: 42000}
-  time: {dt_s: 600, steps: 96}
-  parameters: {u0: 8.0, v0: 2.0, kappa: 1.0e5}
+  # 26×26 @ 1° 与真实数据的 1° 子网格逐点对齐（E3 四组可比）；dx/dy 为该
+  # 间距对应的物理尺度（1° 经/纬度，30°N 处经向约 96 km）
+  grid: {nx: 26, ny: 26, dx_m: 96000.0, dy_m: 111320.0}
+  time: {dt_s: 600.0, steps: 15}      # 16 个快照，与真实数据时次数一致
+  parameters: {u0: 8.0, v0: 2.0, kappa: 100000.0}
   initial_condition: {kind: from_real, variable: tcwv}
-  boundary_condition: {kind: open}
+  boundary_condition: {kind: periodic}
 
 hybrid:
   physics_component: {enabled: true, output_variable: tcwv}
-  statistical_component: {model: gaussian_copula, trained_on: [real]}
+  statistical_component: {model: gaussian_copula, trained_on: [real, physics]}
   screening:
     hard_constraints: true
     reject_ratio_limit: 0.2

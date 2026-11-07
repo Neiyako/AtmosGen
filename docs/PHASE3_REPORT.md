@@ -2,7 +2,7 @@
 
 - 日期：2026-11-07
 - 依据：[`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) §7 Phase 3 验收表、§4.2、§5.4；决策 D7（最小自研求解器）、D8（RealPDEBench 只取指标定义）
-- 结论：**Phase 3 交付项全部完成**。求解器通过 6 项解析/守恒/稳定性验证（`scripts/validate_solver_analytic.py` 全 PASS）；Mode 2 端到端产出契约化 NetCDF；`validation/physical.py` 11 项物理指标接入 `evaluate` 四类聚合（24 用例全绿）；Test C 参数敏感性给出可量化差异表。回归 `pytest -q` → **131 passed**。
+- 结论：**Phase 3 交付项全部完成**。求解器通过 6 项解析/守恒/稳定性验证（`scripts/validate_solver_analytic.py` 全 PASS）；Mode 2 端到端产出契约化 NetCDF；`validation/physical.py` 11 项物理指标接入 `evaluate` 四类聚合（24 用例全绿）；Test C 参数敏感性给出可量化差异表。回归 `pytest -q` → **131 passed**（Phase 3 时点；Phase 5 终态 137）。
 
 ---
 
@@ -87,5 +87,5 @@ python scripts/validate_solver_analytic.py        # 6 项解析/守恒/稳定性
 atmosgen generate --config configs/physics_advection.yaml
 atmosgen evaluate --input output/physics_advection_diffusion_*/data.nc \
                   --overwrite --fail-on never     # physical=PASS
-pytest -q                                         # 131 passed
+pytest -q                                         # 131 passed（Phase 3 时点；终态 137）
 ```

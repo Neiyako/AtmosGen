@@ -252,6 +252,12 @@ class SDVGenerator(BaseGenerator):
         return self
 
     # ------------------------------------------------------------------ #
+    @property
+    def level_models(self) -> Mapping[Any, Any]:
+        """Per-level synthesizers (used by the hybrid mode for conditioning)."""
+
+        return dict(self._level_models)
+
     def _level_values(self) -> list[Any]:
         levels = self._grid.get("level") if self._grid else None
         return list(np.asarray(levels).tolist()) if levels is not None else [None]

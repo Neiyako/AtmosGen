@@ -78,8 +78,9 @@ def test_ingest_rejects_generation_config(tmp_path):
     assert "不是 ingest 配置" in result.stdout + result.stderr
 
 
-def test_generate_unimplemented_mode_exits_3(tmp_path):
-    """hybrid stays NOT_RUN (exit 3) until Phase 4; physics is implemented now."""
+def test_generate_hybrid_requires_real_data_exists(tmp_path):
+    """All generation modes are implemented (Phases 2–4); a missing data.input
+    is now a runtime error (exit 4), not a NOT_RUN stub."""
 
     config = tmp_path / "hybrid.yaml"
     config.write_text(
@@ -104,8 +105,8 @@ def test_generate_unimplemented_mode_exits_3(tmp_path):
         encoding="utf-8",
     )
     result = runner.invoke(app, ["generate", "--config", str(config)])
-    assert result.exit_code == 3
-    assert "NOT_RUN" in result.stdout
+    assert result.exit_code == 4
+    assert "不存在" in (result.stdout + result.stderr)
 
 
 def test_generate_physics_end_to_end(tmp_path, write_yaml):

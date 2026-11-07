@@ -209,13 +209,40 @@ def _finite_entry(ds) -> dict[str, Any]:
     total = 0
     per: list[str] = []
     unverified: list[str] = []
+    # Mode 3 screening mask: cells rejected by the hybrid pipeline are stored as
+    # NaN (documented in rejected.jsonl). Those are "missing by screening", not
+    # corrupt values, so NaN is tolerated while Inf always counts as bad.
+    screening = ds.attrs.get("atmosgen_screening") or {}
+    masked_allowed = bool(screening.get("mask_applied")) if isinstance(screening, Mapping) else False
+    if not masked_allowed:
+        # the embedded contract carries the screening declaration (dataset attrs
+        # starting with "atmosgen" are stripped by attach_contract)
+        raw_contract = ds.attrs.get("atmosgen:contract")
+        if isinstance(raw_contract, str):
+            try:
+                contract_doc = json.loads(raw_contract)
+            except Exception:  # pragma: no cover - malformed contract
+                contract_doc = {}
+            quality = contract_doc.get("quality_metrics") or {}
+            for key in ("screening", "screening_before"):
+                block = quality.get(key) or {}
+                if isinstance(block, Mapping) and block.get("mask_applied"):
+                    masked_allowed = True
+                    break
+    masked = 0
     for name in names:
         arr = np.asarray(ds[name].values)
         total += int(arr.size)
         if not _numeric(arr):
             unverified.append(f"{name}({arr.dtype})")
             continue
-        n_bad = int(np.count_nonzero(~np.isfinite(arr)))
+        non_finite = ~np.isfinite(arr)
+        if masked_allowed:
+            n_nan = int(np.count_nonzero(np.isnan(arr)))
+            masked += n_nan
+            n_bad = int(np.count_nonzero(np.isinf(arr)))
+        else:
+            n_bad = int(np.count_nonzero(non_finite))
         bad += n_bad
         if n_bad:
             per.append(f"{name}={n_bad}")
@@ -223,6 +250,8 @@ def _finite_entry(ds) -> dict[str, Any]:
         return _not_run(0.0, "max",
                         f"变量 dtype 非数值，有限性无法验证: {_short(unverified)}")
     detail = f"data_vars={len(names)}, elements={total}, bad={bad}"
+    if masked_allowed:
+        detail += f"; 筛检遮罩 NaN {masked} 个（已声明 atmosgen_screening.mask_applied）"
     if per:
         detail += "; 逐变量坏值: " + _short(per)
     if "c" in ds.data_vars:

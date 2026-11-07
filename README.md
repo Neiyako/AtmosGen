@@ -12,10 +12,10 @@
 | **Phase 1** | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ✅ **已完成**（2026-11-07，Test A PASS，见 [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md)） |
 | **Phase 2** | 统计生成（SDV）+ 统计/时序/空间评价 | ✅ **已完成**（2026-11-07，Test B + E1，见 [docs/PHASE2_REPORT.md](docs/PHASE2_REPORT.md)） |
 | **Phase 3** | 物理仿真（2D advection–diffusion + 解析解验证） | ✅ **已完成**（2026-11-07，6 项解析验证 + Test C，见 [docs/PHASE3_REPORT.md](docs/PHASE3_REPORT.md)） |
-| Phase 4 | 混合生成（物理基底 + 条件生成 + 物理筛检） | ⏳ 待实施 |
-| Phase 5 | Benchmark、四类质量报告、可复现性与交付 | ⏳ 待实施 |
+| **Phase 4** | 混合生成（物理基底 + 条件生成 + 物理筛检） | ✅ **已完成**（2026-11-07，筛检拒绝率 2.01%、rejected.jsonl，见 [docs/PHASE4_REPORT.md](docs/PHASE4_REPORT.md)） |
+| **Phase 5** | Benchmark、四类质量报告、可复现性与交付 | ✅ **已完成**（2026-11-07，E1–E3 + Test D/E/F，见 [docs/PHASE5_REPORT.md](docs/PHASE5_REPORT.md)） |
 
-**Phase 1–3 已交付可运行链路**：`validate-config` / `ingest` / `list-models` / `generate` / `evaluate` / `report` 全部可用。statistics 三模型（level_wise）+ physics 2D advection–diffusion（6 项解析验证 + Test C）均已端到端产出带契约的数据与四类质量报告（statistical/temporal/spatial/physical）。实测：统计边缘分布 7/8 PASS、时空 FAIL 属预设；物理解 mass 漂移 2.9e-16、收敛阶≈2；**统计 run 饱和违例 3.3%**（Phase 4 筛检动机）。`hybrid` 仍报 `NOT_RUN`（exit 3）。验收以 `docs/PHASE{1,2,3}_REPORT.md` 数值为准。
+**Phase 1–5 全部交付**：`validate-config` / `ingest` / `list-models` / `generate` / `evaluate` / `report` 全部可用，三种生成模式（统计 SDV、物理 advection–diffusion、混合物理基底+条件生成+筛检）均端到端跑通并产出带契约的数据与四类质量报告。实测要点：统计模型 copula 8 项中 7 项 PASS、时空 FAIL 属计划预设；物理求解器 6 项解析验证 PASS（收敛阶≈2、质量漂移 2.9e-16）；混合模式筛检拒绝率 2.01%、筛检后 0 物理违例、时空指标相对统计有可测改善而边缘统计变差（真实权衡）。Test E 数据**逐位可复现**，Test F 全链路 PASS（1m51s），`pytest` 137 passed。验收与未完成项以 `docs/PHASE{1,2,3,4,5}_REPORT.md` 为准。
 
 ## 先读这些文档
 
@@ -27,7 +27,12 @@
 6. [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md) — **Phase 1 实际结果与 Test A 数值证据（含未完成项）**
 7. [docs/PHASE2_REPORT.md](docs/PHASE2_REPORT.md) — **Phase 2 实际结果（Test B/E1/偏差/NOT_RUN）**
 8. [docs/PHASE3_REPORT.md](docs/PHASE3_REPORT.md) — **Phase 3 实际结果（解析验证/Test C/物理验证）**
-9. [docs/EXPERIMENT_REPORT.md](docs/EXPERIMENT_REPORT.md) — E1/E2 对比与 Synthcity 时间盒
+9. [docs/PHASE4_REPORT.md](docs/PHASE4_REPORT.md) — **Phase 4 实际结果（混合模式/筛检/E3）**
+10. [docs/PHASE5_REPORT.md](docs/PHASE5_REPORT.md) — **Phase 5 结果（benchmark/Test D/E/F/交付清单）**
+11. [docs/EXPERIMENT_REPORT.md](docs/EXPERIMENT_REPORT.md) — E1/E2/E3 实验与 Synthcity 时间盒
+12. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 分层架构与数据流
+13. [docs/GENERATION_GUIDE.md](docs/GENERATION_GUIDE.md) — 配置与 CLI 使用指南
+14. [docs/VALIDATION_GUIDE.md](docs/VALIDATION_GUIDE.md) — 四类验证指标/阈值/状态语义
 
 Phase 0 原始证据在 `research/`（环境探测日志、外部资料核对、五个仓库的只读浅克隆）。
 
@@ -45,7 +50,7 @@ conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
 pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令
-pytest -q                        # 131 个用例（Phase 1–3）
+pytest -q                        # 137 个用例（Phase 1–5）
 ```
 
 版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 独立环境已实测（Python 3.10 + torch 2.2.x + numpy<2，需 pin `scipy==1.11.4`、`opacus==1.4.1`），结论见 [docs/DEPENDENCY_COMPATIBILITY.md](docs/DEPENDENCY_COMPATIBILITY.md) §10。
@@ -59,6 +64,7 @@ atmosgen ingest     --config configs/era5_ingest.yaml     # ✅ Phase 1（Test A
 atmosgen list-models                                      # ✅ Phase 1
 atmosgen generate   --config configs/stat_gaussian_copula.yaml   # ✅ Phase 2（statistical）
 atmosgen generate   --config configs/physics_advection.yaml     # ✅ Phase 3（physics）
+atmosgen generate   --config configs/hybrid.yaml                # ✅ Phase 4（hybrid + rejected.jsonl）
 atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc --fail-on never   # ✅ Phase 2
 atmosgen report     --input output/<run>/quality_report.json --format md               # ✅ Phase 2
 ```

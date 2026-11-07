@@ -28,6 +28,12 @@ def _physics_factory() -> type:
     return AdvectionDiffusionGenerator
 
 
+def _hybrid_factory() -> type:
+    from .hybrid_adapter import HybridGenerator
+
+    return HybridGenerator
+
+
 def _statistical_factory(model_name: str) -> Callable[[], type]:
     """Lazy factory: importing sdv happens on first use, not import time."""
 
@@ -131,7 +137,8 @@ MODELS: dict[str, ModelSpec] = {
         description="物理基底（tcwv）→ SDV 条件生成 → 物理硬约束筛检",
         phase=4,
         dependency_problems=_sdv_dependency,
-        implemented=False,
+        implemented=True,
+        factory=_hybrid_factory,
     ),
 }
 
