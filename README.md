@@ -291,6 +291,7 @@ research/    # Phase 0 证据（环境探测、外部资料核对）
 | [`docs/GENERATION_GUIDE.md`](docs/GENERATION_GUIDE.md) | 配置逐段说明、CLI 用法、三模式最小示例、故障处置 |
 | [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md) | 四类指标/阈值/状态语义、报告解读、已知限制 |
 | [`docs/EXPERIMENT_REPORT.md`](docs/EXPERIMENT_REPORT.md) | E1/E2/E3 实验、Test D/E/F |
+| [`docs/DATA_QUALITY_FOR_CLOUD_WATER.md`](docs/DATA_QUALITY_FOR_CLOUD_WATER.md) | 合成数据在**云水资源量**等导数型下游计算中的可用性边界（含 MFC 实测） |
 | [`docs/DATA_SCHEMA.md`](docs/DATA_SCHEMA.md) | 统一数据契约与文件布局 |
 | [`docs/THIRD_PARTY_AUDIT.md`](docs/THIRD_PARTY_AUDIT.md) / [`docs/REUSE_MATRIX.md`](docs/REUSE_MATRIX.md) | 五个候选项目的技术审查与复用边界 |
 | [`docs/DEPENDENCY_COMPATIBILITY.md`](docs/DEPENDENCY_COMPATIBILITY.md) | 本机依赖实测、Synthcity 时间盒结论 |
@@ -325,9 +326,11 @@ research/    # Phase 0 证据（环境探测、外部资料核对）
 ## 15. 复现与验证
 
 ```bash
-pytest -q                                     # 140 passed
+pytest -q                                     # 148 passed
 python scripts/validate_solver_analytic.py    # 求解器 6 项解析/守恒/稳定性验证
 python scripts/run_experiments.py --experiments e1,e2,e3   # benchmark → output/experiments/summary.json
+python scripts/quality_fidelity.py --real data/processed/era5_local.nc \
+       --runs output/statistical_gaussian_copula_*/data.nc   # 保真度 + MFC 诊断
 bash scripts/run_e2e.sh                      # Test F 全链路（需要 /Volumes/Untitled 挂载）
 ```
 

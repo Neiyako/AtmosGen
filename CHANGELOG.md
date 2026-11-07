@@ -2,6 +2,13 @@
 
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。所有重要变更记录于此。
 
+## [Unreleased]
+
+- 新增 `scripts/quality_fidelity.py`：合成数据保真度诊断（边缘 KS / 时序相关 / 空间图案相关 /
+  lag-1 ACF / 饱和违例率，以及**导数型量** MFC 的图案相关与幅度比），面向云水资源量等下游计算的可用性评估。
+- 新增 `docs/DATA_QUALITY_FOR_CLOUD_WATER.md`：合成数据在云水资源量计算中的可用性边界（机理 + 实测 + 改造路线）。
+- 新增 `tests/test_quality_fidelity.py`（8 用例）；测试总数 148。
+
 ## [1.0.0] — 2026-11-07
 
 首个**正式版**：Phase 0–5 全部交付（契约 / IO / 配置 / CLI / 统计生成 / 物理仿真 / 混合生成 / 四类质量验证 / 实验与交付物）。
