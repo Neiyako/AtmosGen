@@ -916,6 +916,7 @@ def _ingest_local_netcdf(
         for name in list(processed_ds.coords):
             if name not in {"time", "level", "latitude", "longitude"}:
                 processed_ds = processed_ds.drop_vars(name)
+        _check_vertical_type(processed_ds, source.vertical)
     finally:
         ds.close()
 

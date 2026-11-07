@@ -8,7 +8,7 @@
 
 ## 1. 一句话结果
 
-`atmosgen ingest --config configs/era5_ingest.yaml` 在 **7.09 s / 峰值内存 358.3 MB（后台采样；进程 ru_maxrss 358.4 MB）** 内读取本机 ERA5 归档 16 个 239.8 MB 源文件的小切片，产出 `data/processed/era5_local.nc`（12.97 MB，16 时次 × 3 层 × 101 × 101，t/q/u/v + 派生 tcwv），契约 14 项字段齐全，**源归档 16 个文件 size+mtime 全部未变**，读回校验一致。run 目录含 `config.yaml` + `environment.json` + `test_a_report.json`。
+`atmosgen ingest --config configs/era5_ingest.yaml` 在 **7.08 s / 峰值内存 426.1 MB（后台 50 ms 采样；进程 ru_maxrss 432.0 MB；多次运行 358–426 MB）** 内读取本机 ERA5 归档 16 个 239.8 MB 源文件的小切片，产出 `data/processed/era5_local.nc`（12.97 MB，16 时次 × 3 层 × 101 × 101，t/q/u/v + 派生 tcwv），契约 14 项字段齐全，**源归档 16 个文件 size+mtime 全部未变**，读回校验一致。run 目录含 `config.yaml` + `environment.json` + `test_a_report.json`。
 
 ## 2. 环境（实测）
 
@@ -24,15 +24,15 @@
 | 计划任务 | 产物 | 验收 |
 |---|---|---|
 | 项目结构 + pyproject + 安装 | `pyproject.toml`、`atmosgen/__init__.py`、`atmosgen/cli.py` | `atmosgen --version` → `atmosgen 0.1.0`；`pip install -e .` 成功 |
-| 配置模型 + 校验 | `atmosgen/config.py`（pydantic v2，generation/ingest 两类配置） | `atmosgen validate-config`：合法 6 例通过、配置负例 6 个 + 数据级负例 4 个被拒（见 §5） |
+| 配置模型 + 校验 | `atmosgen/config.py`（pydantic v2，generation/ingest 两类配置） | `atmosgen validate-config`：合法 6 例通过、配置负例 7 个 + 数据级负例 4 个被拒（见 §5） |
 | 数据契约 | `atmosgen/contract.py`（14 字段 + 内嵌 `atmosgen:contract` + `contract.json` 侧车） | 契约构造/校验/往返单测 9 个 |
 | 数据 IO | `atmosgen/data/io.py`（NetCDF4/zarr、原子写、raw 写保护、只读打开） | 往返一致；写 `data/raw` 被 `RawWriteError` 拒绝 |
 | 真实数据 ingest | `atmosgen/data/preprocess.py`、`scripts/ingest_local_era5.py` | **Test A PASS**（§4） |
 | registry + 生成器基类 | `atmosgen/generators/{base,registry}.py` | 5 个模型注册、`list-models` 输出；基类生命周期单测 |
-| 基础测试 | `tests/` 6 个文件 **49 个用例** | `pytest -q` → **49 passed in 3.72 s** |
-| 运行时/资源记账 | `atmosgen/runner.py`（run 目录、种子、elapsed/峰值 RSS、环境快照） | ingest run 目录含 `config.yaml` + `test_a_report.json` |
+| 基础测试 | `tests/` 6 个文件 **52 个用例** | `pytest -q` → **52 passed in 4.01 s** |
+| 运行时/资源记账 | `atmosgen/runner.py`（run 目录、种子、elapsed/峰值 RSS、环境快照） | ingest run 目录含 `config.yaml` + `environment.json` + `test_a_report.json` |
 
-代码规模：`atmosgen/` 11 个模块 3 458 行（含文档字符串），`tests/` 917 行。
+代码规模：`atmosgen/` 11 个模块 3 470 行（含文档字符串），`tests/` 993 行。
 
 ## 4. Test A · 真实数据读取（证据）
 
@@ -75,15 +75,15 @@ relative difference                      : 2.36e-16
 
 | 文件 | 大小 | SHA-256 |
 |---|---|---|
-| `data/raw/era5_local_slice.nc`（仅 t/q/u/v，无派生变量） | 11.96 MB | `8d37fe2e…` |
-| `data/processed/era5_local.nc`（+ tcwv，内嵌契约） | 12.97 MB | `0bb870e2…` |
-| `data/processed/era5_local.contract.json`（侧车契约，含最终文件校验和） | 2.9 KB | — |
+| `data/raw/era5_local_slice.nc`（仅 t/q/u/v，无派生变量） | 11.96 MB | `b05c720c…` |
+| `data/processed/era5_local.nc`（+ tcwv，内嵌契约） | 12.97 MB | `784cd4f3…` |
+| `data/processed/era5_local.nc.contract.json`（侧车契约，含最终文件校验和） | 2.9 KB | — |
 
 `checks`：source_files_found / time_axis_consistency / readonly_sources_unchanged / contract_valid / roundtrip_readback / no_missing_values / derived_tcwv_valid 全 **PASS**。
 
 ## 5. 测试与验收
 
-- `pytest -q`：**49 passed，3.72 s**（契约 9、IO 9、配置 12、ingest 5、registry 5、CLI 9）
+- `pytest -q`：**52 passed，4.01 s**（契约 9、IO 9、配置 13、ingest 7、registry 5、CLI 9）
 - `atmosgen validate-config` 正例：`demo.yaml`、`era5_ingest.yaml`、`era5_cloud_sample.yaml`、`physics_advection.yaml`、`stat_gaussian_copula.yaml`、`stat_ctgan.yaml` → PASS；负例：`samples.unit=field`+SDV、未知模型、physics 缺 physics 段、CFL 超限、阈值越界、local_era5 缺 root/date_range 等均被拒（退出码 2）
 - `atmosgen list-models`：5 个模型注册（3 统计 / 1 物理 / 1 混合），标注阶段与依赖状态
 - CLI 退出码：`--version`=0；`validate-config` 合法 0 / 非法 2；`ingest` 成功 0 / 失败 4 / 传错配置类型 2；`generate|evaluate|report`=3 且输出 `NOT_RUN`
@@ -109,18 +109,27 @@ Phase 1 完成后由独立验收员（只读复核 + 现场复跑，不采信仓
 | ID | 问题 | 修复 | 证据 |
 |---|---|---|---|
 | F1 | 状态聚合把 `CONDITIONAL_PASS` 升级为 `PASS` | `_overall_status()` 改为：FAIL 主导，任何非 PASS 项降级为 CONDITIONAL_PASS | 单测 `test_overall_status_never_upgrades_partial_pass` |
-| F2 | `peak_rss_mb` 实为瞬时 RSS | `ResourceTracker` 改为后台采样峰值 + 另报 `process_max_rss_mb`（ru_maxrss） | 本轮 ingest：358.3 MB / 358.4 MB 一致；单测覆盖 |
+| F2 | `peak_rss_mb` 实为瞬时 RSS | `ResourceTracker` 改为后台 50 ms 采样峰值 + 另报 `process_max_rss_mb`（ru_maxrss） | 本轮 ingest：426.1 MB / ru_maxrss 432.0 MB（比值 0.986；首轮瞬时值偏差曾达 20 倍）；多次运行 358–426 MB |
 | F3 | `local_netcdf` 静默忽略 `derive.tcwv` | 配置校验直接拒绝该组合（不静默忽略） | `atmosgen validate-config /tmp/f3.yaml` → FAIL，exit 2，单测 `test_local_netcdf_derive_is_rejected_not_ignored` |
 | F4 | 未捕获异常导致 CLI exit 1 | `ingest`/`validate-config` 兜底捕获，统一 exit 4 并给错误信息 | 无后缀源文件 → `EXIT=4`，`ValueError: cannot infer format…` |
 | F5 | `CONDITIONAL_PASS` 被当失败（exit 4） | CLI 对 CONDITIONAL_PASS 给 exit 0 + 明示"存在 NOT_RUN" | 无 derive 配置 → `status: CONDITIONAL_PASS`、`EXIT=0` |
 | F6 | "open_source 无写路径"表述不成立、单测恒真 | 表述修正为"只以读模式打开，写保护由 save_canonical 断言承担"；单测改为校验源文件指纹不变 | `test_open_source_snapshot_does_not_touch_source` |
 | F7 | 同目录多数据集侧车 `contract.json` 互相覆盖 | 侧车命名：`data.nc` → `contract.json`（schema 约定），其它 → `<stem>.contract.json` | `test_sidecar_does_not_collide_within_one_directory` |
-| F8 | `years` / `vertical` / `read_only_assertion` 被接受但未使用 | `years` 校验归档年份与 date_range 一致性；`vertical` 校验层坐标类型；`read_only_assertion` 关闭时只读检查标 NOT_RUN | 代码路径 + 单测 |
+| F8 | `years` / `vertical` / `read_only_assertion` 被接受但未使用 | `years` 校验归档年份与 date_range 一致性；`vertical` 校验层坐标类型（era5 与 local_netcdf 两条路径）；`read_only_assertion` 关闭时只读检查标 NOT_RUN | 单测 `test_check_vertical_type_rejects_mismatch`、`test_read_only_assertion_can_be_disabled`、`test_local_netcdf_rejects_archive_only_fields` |
 | F9 | `_netcdf_encoding` 分块死代码（部分 chunk 被静默忽略） | 未指定维度回退为整维长度并 clamp，chunksizes 始终生效 | 代码路径 |
 | F10 | 报告数字/表述与产物不一致（负例数、模块数、测试行数、sha 键表述、峰值内存） | 全部按实测值更新（见 §1/§3/§5/§6、P1/P7） | 本轮复跑数值 |
 | F11 | `environment_snapshot()` 未调用，run 目录无环境快照 | `_run_context()` 写 `environment.json` | run 目录实测存在 `environment.json` |
 
 > 独立验收原始证据（verifier 侧）：`/tmp/agver/verdict.yaml`、`/tmp/agver/evidence/*.log`（临时目录，非仓库产物）。
+
+第二轮独立复核（HEAD `bac2eff`）确认 F1–F5、F9、F11 已修复，另指出 4 个轻缺陷，均已处理：
+
+| ID | 第二轮残留问题 | 处理 | 证据 |
+|---|---|---|---|
+| R1 | 同 stem 不同格式（`a.nc` / `a.zarr`）侧车仍碰撞 | 侧车名改为 `<完整文件名>.contract.json`（`data.nc` 仍用 `contract.json`） | `test_sidecar_does_not_collide_within_one_directory` |
+| R2 | `local_netcdf` 路径仍静默忽略 `source.years` / `source.vertical` | 配置校验拒绝 `local_netcdf` 的 `root`/`years`；`local_netcdf` ingest 也执行 `_check_vertical_type` | `test_local_netcdf_rejects_archive_only_fields`、`test_check_vertical_type_rejects_mismatch` |
+| R3 | 报告 3 处表述与产物不符 | §3 资源行补 `environment.json`；负例数改为 7；F8 证据改为真实单测名；新增 3 个测试覆盖 | 本轮 `pytest 52 passed` |
+| R4 | `data/io.py` docstring 仍称"无写 API" | 改为"以读模式打开；写保护由 save_canonical 路径断言承担" | 代码注释 |
 
 ## 7. 未完成 / NOT_RUN（如实标注）
 

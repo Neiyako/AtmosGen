@@ -12,7 +12,13 @@ import xarray as xr
 from atmosgen.config import IngestConfigFile, load_config_file
 from atmosgen.contract import read_contract
 from atmosgen.data.io import file_fingerprint, open_source
-from atmosgen.data.preprocess import _overall_status, derive_tcwv, ingest
+from atmosgen.data.preprocess import (
+    IngestError,
+    _check_vertical_type,
+    _overall_status,
+    derive_tcwv,
+    ingest,
+)
 
 GRAVITY = 9.80665
 
@@ -158,6 +164,50 @@ def test_ingest_local_era5_fake_archive(tmp_path, write_yaml):
     for path in archive.rglob("*.nc"):
         assert path.stat().st_size > 0
     assert report.readonly["all_unchanged"] is True
+
+
+def test_check_vertical_type_rejects_mismatch():
+    pressure = xr.Dataset(coords={"level": (("level",), [500.0, 700.0], {"units": "hPa"})})
+    _check_vertical_type(pressure, "pressure_level")  # consistent: no raise
+    with pytest.raises(IngestError):
+        _check_vertical_type(pressure, "model_level")
+    model = xr.Dataset(coords={"level": (("level",), [1, 2, 3], {"units": "1"})})
+    with pytest.raises(IngestError):
+        _check_vertical_type(model, "pressure_level")
+
+
+def test_read_only_assertion_can_be_disabled(tmp_path, write_yaml):
+    archive = tmp_path / "archive"
+    (archive / "2020").mkdir(parents=True)
+    for index, canonical in enumerate(("t", "q", "u", "v")):
+        _tiny_era5_file(
+            archive / "2020" / f"ERA5_025dg_20200501_{canonical}.nc",
+            canonical,
+            seed=index,
+            values="positive" if canonical == "q" else "dynamic",
+        )
+    config_path = write_yaml(
+        "no_readonly.yaml",
+        {
+            "project": {"name": "no_readonly", "seed": 3, "output_dir": str(tmp_path / "output")},
+            "source": {
+                "kind": "local_era5",
+                "root": str(archive),
+                "date_range": ["2020-05-01", "2020-05-01"],
+                "file_pattern": "ERA5_025dg_{date:%Y%m%d}_{variable}.nc",
+                "variable_map": {name: name for name in ("t", "q", "u", "v")},
+                "subset": {"levels": [500.0, 700.0], "time_step_hours": 6},
+            },
+            "output": {
+                "processed_path": str(tmp_path / "processed" / "era5.nc"),
+                "read_only_assertion": False,
+            },
+        },
+    )
+    report = ingest(load_config_file(config_path), config_path=config_path)
+    assert report.checks["readonly_sources_unchanged"] == "NOT_RUN"
+    assert report.readonly["enforced"] is False
+    assert report.status == "CONDITIONAL_PASS"
 
 
 def test_ingest_local_netcdf_cloud_sample(tmp_path, write_yaml):

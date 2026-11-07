@@ -532,6 +532,14 @@ class SourceConfig(_StrictModel):
         elif self.kind == "local_netcdf":
             if self.input is None:
                 problems.append("source.kind=local_netcdf 需要 input（源 NetCDF 路径）")
+            if self.root is not None:
+                problems.append(
+                    "source.root 只适用于 local_era5；local_netcdf 请用 input 指向单个 NetCDF 文件"
+                )
+            if self.years is not None:
+                problems.append(
+                    "source.years 只适用于 local_era5（按年份目录组织）；local_netcdf 请删除该字段"
+                )
             if self.derive is not None and self.derive.tcwv is not None:
                 problems.append(
                     "source.kind=local_netcdf 暂不支持 derive.tcwv（Phase 1 只在 local_era5 上派生）："

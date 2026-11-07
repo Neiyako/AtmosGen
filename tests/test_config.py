@@ -157,6 +157,27 @@ def test_local_netcdf_derive_is_rejected_not_ignored(write_yaml):
     assert any("derive.tcwv" in error for error in check.errors)
 
 
+def test_local_netcdf_rejects_archive_only_fields(write_yaml):
+    path = write_yaml(
+        "cloud_archive_fields.yaml",
+        {
+            "project": {"name": "cloud"},
+            "source": {
+                "kind": "local_netcdf",
+                "input": "./cloud.nc",
+                "root": "/Volumes/Untitled",
+                "years": [2024],
+                "variable_map": {"clwc": "clwc"},
+            },
+            "output": {"processed_path": "./out.nc"},
+        },
+    )
+    check = validate_config_file(path, check_data=False)
+    assert not check.valid
+    joined = " ".join(check.errors)
+    assert "source.root" in joined and "source.years" in joined
+
+
 def test_missing_file_raises_config_error(tmp_path):
     with pytest.raises(ConfigError):
         load_config_file(tmp_path / "missing.yaml")

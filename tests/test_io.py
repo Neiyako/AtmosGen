@@ -97,6 +97,11 @@ def test_sidecar_does_not_collide_within_one_directory(tmp_path, small_ds):
     # data.nc keeps the schema-mandated contract.json name
     run_like = save_canonical(small_ds, tmp_path / "run" / "data.nc", contract=make_contract(small_ds))
     assert io.sidecar_contract_path(run_like) == tmp_path / "run" / "contract.json"
+    # same stem, different format must also stay distinct
+    zarr_like = save_canonical(
+        small_ds, tmp_path / "a.zarr", contract=make_contract(small_ds), format="zarr"
+    )
+    assert io.sidecar_contract_path(zarr_like) != sidecar_a
 
 
 def test_canonical_save_requires_contract(tmp_path, small_ds):

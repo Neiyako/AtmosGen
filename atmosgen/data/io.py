@@ -2,9 +2,11 @@
 
 Design rules (docs/DATA_SCHEMA.md):
 
-1. Sources are opened **read-only**: ``open_source`` never offers a write path,
-   and ``save_canonical`` refuses to write under ``data/raw/`` unless the
-   caller is an ingest script passing ``allow_raw=True`` explicitly.
+1. Sources are opened **read-only** (``mode="r"`` at the backend level).
+   xarray ``Dataset`` objects inherently expose ``to_netcdf``/``to_zarr``, so
+   write protection is enforced where writes happen: ``save_canonical``
+   refuses to write under ``data/raw/`` unless the caller is an ingest script
+   passing ``allow_raw=True`` explicitly.
 2. Canonical files always carry an embedded contract (``atmosgen:contract``)
    and a standalone ``contract.json`` sidecar.
 3. Writes are atomic: data is written to a sibling temporary path and moved
@@ -155,9 +157,9 @@ def open_source(
 ) -> xr.Dataset:
     """Open a source dataset read-only.
 
-    The returned dataset is a lazy view: no data is read until accessed, and
-    there is deliberately no write API here. Callers must never call
-    ``to_netcdf`` on a dataset obtained from this function.
+    The returned dataset is a lazy view: no data is read until accessed. The
+    handle is opened in read mode; AtmosGen code never writes a source back,
+    and the path guard in :func:`save_canonical` is the enforcement point.
     """
 
     target = resolve_path(path)
@@ -308,7 +310,8 @@ def sidecar_contract_path(data_path: str | Path) -> Path:
     target = Path(data_path)
     if target.stem == "data":
         return target.parent / CONTRACT_FILENAME
-    return target.parent / f"{target.stem}.contract.json"
+    # keep the format suffix so ``a.nc`` and ``a.zarr`` cannot collide
+    return target.parent / f"{target.name}.contract.json"
 
 
 def _remove_target(path: Path) -> None:
