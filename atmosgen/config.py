@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from .contract import ContractError, known_variables
 
@@ -500,11 +500,53 @@ class SourceConfig(_StrictModel):
     derive: DeriveConfig | None = None
     request: dict[str, Any] | None = None
 
+    @field_validator("date_range", mode="before")
+    @classmethod
+    def _coerce_date_range(cls, value: Any) -> Any:
+        """Accept unquoted YAML dates (``[2010-05-01, 2010-05-04]``) as strings."""
+
+        if value is None:
+            return None
+        if isinstance(value, (list, tuple)):
+            return tuple(
+                item.isoformat() if hasattr(item, "isoformat") else item for item in value
+            )
+        return value
+
     @model_validator(mode="after")
     def _check(self) -> "SourceConfig":
         problems: list[str] = []
         if self.vertical not in {"pressure_level", "model_level"}:
             problems.append("source.vertical 必须为 pressure_level 或 model_level")
+        # Per-kind field whitelist: a field that only one source kind supports
+        # must be rejected for the other kinds instead of being silently ignored.
+        archive_only = {
+            "root": self.root,
+            "years": self.years,
+            "date_range": self.date_range,
+            "file_pattern": self.file_pattern,
+        }
+        if self.kind == "local_netcdf":
+            for field_name, value in archive_only.items():
+                if value is not None:
+                    problems.append(
+                        f"source.{field_name} 只适用于 local_era5；local_netcdf 请删除该字段"
+                    )
+            if self.request is not None:
+                problems.append("source.request 只适用于 cds；local_netcdf 请删除该字段")
+        elif self.kind == "local_era5":
+            if self.input is not None:
+                problems.append("source.input 只适用于 local_netcdf；local_era5 请用 root + file_pattern")
+            if self.request is not None:
+                problems.append("source.request 只适用于 cds；local_era5 请删除该字段")
+        elif self.kind == "cds":
+            for field_name, value in archive_only.items():
+                if value is not None:
+                    problems.append(
+                        f"source.{field_name} 只适用于 local_era5；cds 请用 request 描述下载请求"
+                    )
+            if self.input is not None:
+                problems.append("source.input 只适用于 local_netcdf；cds 请用 request 描述下载请求")
         bad_vars = [name for name in self.variable_map if name not in known_variables()]
         if bad_vars:
             problems.append(f"source.variable_map 含未知规范变量 {bad_vars}")
@@ -532,14 +574,6 @@ class SourceConfig(_StrictModel):
         elif self.kind == "local_netcdf":
             if self.input is None:
                 problems.append("source.kind=local_netcdf 需要 input（源 NetCDF 路径）")
-            if self.root is not None:
-                problems.append(
-                    "source.root 只适用于 local_era5；local_netcdf 请用 input 指向单个 NetCDF 文件"
-                )
-            if self.years is not None:
-                problems.append(
-                    "source.years 只适用于 local_era5（按年份目录组织）；local_netcdf 请删除该字段"
-                )
             if self.derive is not None and self.derive.tcwv is not None:
                 problems.append(
                     "source.kind=local_netcdf 暂不支持 derive.tcwv（Phase 1 只在 local_era5 上派生）："

@@ -167,6 +167,7 @@ def test_local_netcdf_rejects_archive_only_fields(write_yaml):
                 "input": "./cloud.nc",
                 "root": "/Volumes/Untitled",
                 "years": [2024],
+                "file_pattern": "ERA5_025dg_{date:%Y%m%d}_{variable}.nc",
                 "variable_map": {"clwc": "clwc"},
             },
             "output": {"processed_path": "./out.nc"},
@@ -176,6 +177,27 @@ def test_local_netcdf_rejects_archive_only_fields(write_yaml):
     assert not check.valid
     joined = " ".join(check.errors)
     assert "source.root" in joined and "source.years" in joined
+    assert "source.file_pattern" in joined
+
+
+def test_local_era5_rejects_netcdf_only_fields(write_yaml):
+    path = write_yaml(
+        "era5_input.yaml",
+        {
+            "project": {"name": "era5"},
+            "source": {
+                "kind": "local_era5",
+                "root": "/Volumes/Untitled",
+                "input": "./single.nc",
+                "date_range": ["2010-05-01", "2010-05-02"],
+                "file_pattern": "ERA5_025dg_{date:%Y%m%d}_{variable}.nc",
+            },
+            "output": {"processed_path": "./out.nc"},
+        },
+    )
+    check = validate_config_file(path, check_data=False)
+    assert not check.valid
+    assert any("source.input" in error for error in check.errors)
 
 
 def test_missing_file_raises_config_error(tmp_path):

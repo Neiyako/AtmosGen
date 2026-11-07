@@ -690,6 +690,7 @@ def _ingest_local_era5(
         initial_conditions={"kind": "era5_slice", "details": {"description": "normalised slice of the local ERA5 archive"}},
         generation_config=generation_config,
         metadata=metadata,
+        level_type=source.vertical,
     )
     if config.output.raw_path is not None:
         raw_target = assert_writable_target(config.output.raw_path, allow_raw=True)
@@ -711,6 +712,7 @@ def _ingest_local_era5(
         initial_conditions={"kind": "era5_slice", "details": {"description": "normalised slice of the local ERA5 archive"}},
         generation_config=generation_config,
         metadata=metadata,
+        level_type=source.vertical,
     )
     processed_target = assert_writable_target(config.output.processed_path)
     save_canonical(

@@ -308,9 +308,11 @@ def sidecar_contract_path(data_path: str | Path) -> Path:
     """
 
     target = Path(data_path)
-    if target.stem == "data":
+    # Run directories use ``data.nc`` + ``contract.json`` (schema convention);
+    # every other name keeps its full name (including the format suffix) so
+    # ``a.nc`` / ``a.zarr`` or ``data.nc`` / ``data.zarr`` cannot collide.
+    if target.stem == "data" and detect_format(target) == "netcdf":
         return target.parent / CONTRACT_FILENAME
-    # keep the format suffix so ``a.nc`` and ``a.zarr`` cannot collide
     return target.parent / f"{target.name}.contract.json"
 
 

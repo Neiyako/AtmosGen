@@ -89,6 +89,22 @@ def test_units_fall_back_to_schema(small_ds):
     assert doc["units"]["t"] == "K"
 
 
+def test_level_type_override_is_recorded(small_ds):
+    ds = small_ds.copy()
+    ds["level"] = ds["level"].astype("float64").assign_attrs(units="1")
+    inferred = build_contract(ds, generation_method="ingest", source={"kind": "real"})
+    # dimensionless level units alone are ambiguous; the explicit config wins
+    declared = build_contract(
+        ds, generation_method="ingest", source={"kind": "real"}, level_type="model_level"
+    )
+    assert declared["coordinates"]["level"]["type"] == "model_level"
+    assert inferred["coordinates"]["level"]["type"] in {"pressure_level", "model_level"}
+    with pytest.raises(ContractError):
+        build_contract(
+            ds, generation_method="ingest", source={"kind": "real"}, level_type="sigma_level"
+        )
+
+
 def test_validate_contract_checks_dims(small_ds):
     doc = build_contract(small_ds, generation_method="ingest", source={"kind": "real"})
     broken = small_ds.copy()

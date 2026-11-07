@@ -192,9 +192,20 @@ def _time_description(time: xr.DataArray) -> dict[str, Any]:
     }
 
 
-def _level_description(level: xr.DataArray) -> dict[str, Any]:
+def _level_description(level: xr.DataArray, *, level_type: str | None = None) -> dict[str, Any]:
     values = np.asarray(level.values)
     units = (_coord_units(level) or "").lower()
+    if level_type is not None:
+        if level_type not in {"pressure_level", "model_level"}:
+            raise ContractError(
+                f"level_type must be pressure_level or model_level, got {level_type!r}"
+            )
+        return {
+            "name": level.name,
+            "type": level_type,
+            "units": _coord_units(level) or ("hPa" if level_type == "pressure_level" else "1"),
+            "values": [float(v) if not float(v).is_integer() else int(v) for v in values],
+        }
     vertical = str(level.attrs.get("vertical", "")).lower()
     if vertical in {"pressure_level", "model_level"}:
         kind = vertical
@@ -232,14 +243,14 @@ def _horizontal_description(coord: xr.DataArray, *, axis: str) -> dict[str, Any]
     return meta
 
 
-def _coordinates_block(ds: xr.Dataset) -> dict[str, Any]:
+def _coordinates_block(ds: xr.Dataset, *, level_type: str | None = None) -> dict[str, Any]:
     block: dict[str, Any] = {}
     for name in ds.coords:
         coord = ds.coords[name]
         if name == "time":
             block["time"] = _time_description(coord)
         elif name == "level":
-            block["level"] = _level_description(coord)
+            block["level"] = _level_description(coord, level_type=level_type)
         elif name == "latitude":
             block["latitude"] = _horizontal_description(coord, axis="latitude")
         elif name == "longitude":
@@ -268,6 +279,7 @@ def build_contract(
     quality_metrics: Mapping[str, Any] | None = None,
     metadata: Mapping[str, Any] | None = None,
     units: Mapping[str, str] | None = None,
+    level_type: str | None = None,
     atmosgen_version: str | None = None,
 ) -> dict[str, Any]:
     """Build a contract document describing ``ds``.
@@ -317,7 +329,7 @@ def build_contract(
         "schema_version": SCHEMA_VERSION,
         "atmosgen_version": atmosgen_version or __version__,
         "variables": variables,
-        "coordinates": _coordinates_block(ds),
+        "coordinates": _coordinates_block(ds, level_type=level_type),
         "units": unit_map,
         "source": source_dict,
         "generation_method": generation_method,

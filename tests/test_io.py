@@ -102,6 +102,14 @@ def test_sidecar_does_not_collide_within_one_directory(tmp_path, small_ds):
         small_ds, tmp_path / "a.zarr", contract=make_contract(small_ds), format="zarr"
     )
     assert io.sidecar_contract_path(zarr_like) != sidecar_a
+    # data.nc keeps contract.json but data.zarr must not overwrite it
+    run_dir = tmp_path / "run2"
+    nc_like = save_canonical(small_ds, run_dir / "data.nc", contract=make_contract(small_ds))
+    zarr_data = save_canonical(
+        small_ds, run_dir / "data.zarr", contract=make_contract(small_ds), format="zarr"
+    )
+    assert io.sidecar_contract_path(nc_like) == run_dir / "contract.json"
+    assert io.sidecar_contract_path(zarr_data) == run_dir / "data.zarr.contract.json"
 
 
 def test_canonical_save_requires_contract(tmp_path, small_ds):
