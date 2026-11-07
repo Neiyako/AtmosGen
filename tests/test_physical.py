@@ -36,12 +36,21 @@ LON = np.linspace(100.0, 104.0, NLON)
 DIMS4 = ("time", "level", "latitude", "longitude")
 DIMS3 = ("time", "latitude", "longitude")
 
+#: Hard constraints that existed before the schema-1.2 variable extension.
+#: They are kept separate from the new metrics so that the legacy regression
+#: test below keeps proving that the original behaviour did not change.
 HARD_KEYS = (
     "finite", "q_nonneg", "cloud_nonneg", "t_range", "wind_range",
     "saturation", "tcwv_range", "c_nonneg",
 )
+#: Hard constraints added by the schema-1.2 variable-system extension.
+NEW_HARD_KEYS = (
+    "sp_range", "w_range", "z_range", "tp_nonneg", "rh_range",
+    "column_consistency", "tcwv_integral_consistency",
+    "flux_consistency", "mfc_consistency",
+)
 SOFT_KEYS = ("mass_budget", "smoothness", "equation_residual")
-ALL_KEYS = HARD_KEYS + SOFT_KEYS
+ALL_KEYS = HARD_KEYS + NEW_HARD_KEYS + SOFT_KEYS
 STATUSES = {"PASS", "FAIL", "CONDITIONAL_PASS", "NOT_RUN", "INFO"}
 
 

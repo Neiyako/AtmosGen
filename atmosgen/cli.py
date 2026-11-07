@@ -247,6 +247,18 @@ def run_generate_command(*, config_path: Path, overwrite: bool = False) -> int:
         typer.echo(
             f"  忽略超参:    {meta['ignored_hyperparameters']}（当前 sdv 版本不支持，已记录不失败）"
         )
+    plan = meta.get("variable_plan") or {}
+    if plan:
+        typer.echo(
+            f"  变量计划:    请求 {len(plan.get('requested') or [])} 个，"
+            f"交付 {len(plan.get('delivered') or [])} 个"
+        )
+        unavailable = plan.get("unavailable") or {}
+        if unavailable:
+            typer.echo(
+                "  警告:        以下请求变量不可用 (NOT_AVAILABLE，未写入占位值): "
+                + ", ".join(unavailable)
+            )
     typer.echo(
         f"下一步：atmosgen evaluate --input {outcome.data_path} --real <真实数据集>"
     )

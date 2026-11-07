@@ -1,0 +1,54 @@
+# Mode 2 物理仿真（策略 C：简化物理场生成）——耦合多变量气压层数据集
+#   基础气象场 t/q/u/v/w/z/sp + 云水组分 clwc/ciwc/crwc/cswc + 累计降水 tp
+#   驱动方式：自研 2D 平流-扩散求解器跑两路独立的高斯羽流（驱动 A 旋转部分，
+#             驱动 B 辐散部分），所有场都继承求解器的空间连续性与时间演化。
+#   不是完整 NWP：无辐射、无地表通量、无完整微物理、无资料同化。
+project: {name: multifield_full, seed: 42, output_dir: ./output}
+
+generation:
+  mode: physics
+  model: multifield
+  samples: {unit: field, fields: 12}
+  # 本次运行必须交付的规范变量（派生量由派生诊断引擎补齐）
+  variables: [t, q, u, v, w, z, sp, clwc, ciwc, crwc, cswc, tp, tcwv, tclw, tciw, rh, r, qflux_u, qflux_v, qflux_u_col, qflux_v_col, mfc, mfc_sl, cwp, iwp, twp]
+
+multifield:
+  # 水平网格：48×24 @ 42 km（约 2000 km × 1000 km 的区域）
+  grid: {nx: 48, ny: 24, dx_m: 42000, dy_m: 42000}
+  # 时间步：600 s × 24 步 = 4 h（samples.fields=12 → 每 2 步存一个快照）
+  time: {dt_s: 600, steps: 24}
+  # 气压层（hPa，从地面到顶严格降序）
+  levels_hpa: [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100]
+  # 模式底（地面）状态
+  surface: {pressure_hpa: 1013.25, temperature_k: 288.0}
+  # 各场的模式振幅
+  pattern:
+    temperature_amplitude_k: 6.0
+    humidity_amplitude: 0.25
+    pressure_amplitude: 0.02
+    wind_speed_scale: 12.0
+    divergence_scale: 1.0
+  # 平流-扩散模式驱动的参数（两路羽流共用 u0/v0/kappa，中心不同）
+  tracer:
+    u0: 8.0
+    v0: 2.0
+    kappa: 1.0e5
+    plume_center: [30.0, 110.0]              # 驱动 A：旋转/温度/气压模式
+    plume_sigma_deg: 6.0
+    plume_amplitude: 1.0
+    divergence_plume_center: [22.0, 118.0]   # 驱动 B：辐散风模式（独立）
+    divergence_plume_sigma_deg: 8.0
+  # 云微物理（简化）：凝结带、冰相分配、降水析出比例
+  cloud:
+    base_pressure_hpa: 950.0
+    top_pressure_hpa: 300.0
+    freezing_level_k: 273.15
+    ice_ramp_k: 15.0
+    background_rh: 0.62
+    precipitation_fraction: 0.35
+  # 累计降水的累积窗口与落出时间尺度
+  precipitation:
+    accumulation_seconds: 0.0   # 0 → 用 time.dt_s（600 s）
+
+validation: {physical: true, temporal: true, spatial: true}
+output: {format: netcdf, directory: ./output}

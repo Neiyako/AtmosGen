@@ -34,7 +34,7 @@ STATISTICAL_MODELS: tuple[str, ...] = (
     "tvae",
     "analog_blocks",
 )
-PHYSICS_MODELS: tuple[str, ...] = ("advection_diffusion",)
+PHYSICS_MODELS: tuple[str, ...] = ("advection_diffusion", "multifield")
 HYBRID_MODELS: tuple[str, ...] = ("hybrid",)
 
 MODELS_BY_MODE: dict[str, tuple[str, ...]] = {
@@ -73,6 +73,19 @@ THRESHOLD_LIMITS: dict[str, tuple[float | None, float | None]] = {
     "mass_drift_max": (0.0, 1.0),
     "smoothness_ratio_max": (0.0, None),
     "smoothness_factor_max": (0.0, None),
+    # --- variable-system extension (schema 1.2) --------------------------- #
+    "sp_min": (0.0, None),
+    "sp_max": (0.0, None),
+    "w_max": (0.0, None),
+    "z_min": (None, None),
+    "z_max": (None, None),
+    "rh_min": (0.0, None),
+    "rh_max": (0.0, None),
+    "rh_supersaturation_max": (100.0, None),
+    "tp_max": (0.0, None),
+    "column_max": (0.0, None),
+    "consistency_rtol": (0.0, None),
+    "consistency_atol": (0.0, None),
 }
 
 _GRID_NAMES = ("nx", "ny", "dx_m", "dy_m")
@@ -298,6 +311,12 @@ class GenerationConfig(_StrictModel):
     training: TrainingConfig = Field(default_factory=TrainingConfig)
     covariates: list[str] = Field(default_factory=list)
     structure: StructureConfig = Field(default_factory=StructureConfig)
+    #: Canonical variables the run must deliver. ``None`` (the default) keeps
+    #: the legacy behaviour: the generator decides which variables exist.
+    #: When given, the requested set is validated against the canonical
+    #: registry, its dependencies are resolved automatically, and the output is
+    #: subset to the requested variables.
+    variables: list[str] | None = None
 
     @model_validator(mode="after")
     def _check(self) -> "GenerationConfig":
@@ -319,6 +338,19 @@ class GenerationConfig(_StrictModel):
                     "mode=statistical 需要统计生成依赖（sdv/sdmetrics），当前环境不可用: "
                     f"{detail}；请 pip install -e '.[stat]'"
                 )
+        if self.variables is not None:
+            if not self.variables:
+                raise ValueError(
+                    "generation.variables 不能为空列表；不需要筛选请删除该字段"
+                )
+            unknown = [name for name in self.variables if name not in known_variables()]
+            if unknown:
+                raise ValueError(
+                    f"generation.variables 含未知变量 {unknown}；"
+                    f"规范变量为 {known_variables()}"
+                )
+            if len(set(self.variables)) != len(self.variables):
+                raise ValueError("generation.variables 含重复项")
         return self
 
 
@@ -399,6 +431,164 @@ class PhysicsConfig(_StrictModel):
         if problems:
             raise ValueError("physics 参数不满足显式格式稳定性要求: " + "; ".join(problems))
         return self
+
+
+# --------------------------------------------------------------------------- #
+# Multifield (coupled multi-variable physics field) configuration
+# --------------------------------------------------------------------------- #
+class MultifieldGridConfig(_StrictModel):
+    """Horizontal grid of the coupled field generator (metres per cell)."""
+
+    nx: int = Field(ge=8)
+    ny: int = Field(ge=8)
+    dx_m: float = Field(gt=0)
+    dy_m: float = Field(gt=0)
+
+
+class MultifieldTimeConfig(_StrictModel):
+    dt_s: float = Field(gt=0)
+    steps: int = Field(ge=1)
+
+
+class MultifieldSurfaceConfig(_StrictModel):
+    """Surface (model bottom) state of the coupled column."""
+
+    pressure_hpa: float = Field(default=1013.25, gt=0.0)
+    temperature_k: float = Field(default=288.0, gt=150.0, lt=340.0)
+
+
+class MultifieldPatternConfig(_StrictModel):
+    """Amplitudes of the smooth advection-diffusion pattern driver.
+
+    The pattern field is produced by the existing 2-D advection-diffusion
+    solver, so every generated field inherits its spatial continuity and its
+    temporal evolution.
+    """
+
+    temperature_amplitude_k: float = Field(default=6.0, ge=0.0, le=40.0)
+    humidity_amplitude: float = Field(default=0.25, ge=0.0, le=0.6)
+    pressure_amplitude: float = Field(default=0.02, ge=0.0, le=0.2)
+    wind_speed_scale: float = Field(default=12.0, gt=0.0, le=80.0)
+    divergence_scale: float = Field(default=1.0, ge=0.0, le=20.0)
+
+
+class MultifieldTracerConfig(_StrictModel):
+    """Parameters of the advection-diffusion pattern driver (see Mode 2 solver)."""
+
+    u0: float = 0.0
+    v0: float = 0.0
+    kappa: float = Field(default=0.0, ge=0.0)
+    plume_center: tuple[float, float] = (0.0, 0.0)
+    plume_sigma_deg: float = Field(default=6.0, gt=0.0)
+    plume_amplitude: float = 1.0
+    #: Second, independent driver used for the divergent part of the wind.
+    divergence_plume_center: tuple[float, float] = (0.0, 0.0)
+    divergence_plume_sigma_deg: float = Field(default=6.0, gt=0.0)
+
+
+class MultifieldCloudConfig(_StrictModel):
+    """Cloud microphysics-lite parameters (condensation + precipitation split)."""
+
+    #: Pressure band in which condensation is allowed (hPa, surface -> top).
+    base_pressure_hpa: float = Field(default=950.0, gt=0.0)
+    top_pressure_hpa: float = Field(default=300.0, gt=0.0)
+    #: Freezing level and the ice-ramp width (K).
+    freezing_level_k: float = Field(default=273.15, gt=200.0, lt=300.0)
+    ice_ramp_k: float = Field(default=15.0, gt=0.0, le=60.0)
+    #: Relative-humidity floor of the background profile.
+    background_rh: float = Field(default=0.62, gt=0.0, lt=1.0)
+    #: Extra relative humidity added inside the cloud band (this is what makes
+    #: the moist part of the pattern supersaturate and therefore condense).
+    cloud_rh_boost: float = Field(default=0.25, ge=0.0, le=1.0)
+    #: Fraction of the condensate that falls out as precipitation.
+    precipitation_fraction: float = Field(default=0.35, ge=0.0, le=1.0)
+
+
+class MultifieldPrecipitationConfig(_StrictModel):
+    """How the accumulated precipitation ``tp`` is obtained."""
+
+    #: seconds of the accumulation window (defaults to time.dt_s when 0)
+    accumulation_seconds: float = Field(default=0.0, ge=0.0)
+    #: characteristic time the falling condensate stays in the column (s);
+    #: the instantaneous precipitation rate is the column rain/snow mass
+    #: divided by this timescale.
+    fallout_timescale_s: float = Field(default=3600.0, gt=0.0)
+
+
+class MultifieldConfig(_StrictModel):
+    """Configuration of the coupled multi-variable physics field generator."""
+
+    grid: MultifieldGridConfig
+    time: MultifieldTimeConfig
+    levels_hpa: list[float] = Field(min_length=2)
+    surface: MultifieldSurfaceConfig = Field(default_factory=MultifieldSurfaceConfig)
+    pattern: MultifieldPatternConfig = Field(default_factory=MultifieldPatternConfig)
+    tracer: MultifieldTracerConfig = Field(default_factory=MultifieldTracerConfig)
+    cloud: MultifieldCloudConfig = Field(default_factory=MultifieldCloudConfig)
+    precipitation: MultifieldPrecipitationConfig = Field(
+        default_factory=MultifieldPrecipitationConfig
+    )
+
+    @model_validator(mode="after")
+    def _check(self) -> "MultifieldConfig":
+        levels = [float(value) for value in self.levels_hpa]
+        if len(set(levels)) != len(levels):
+            raise ValueError("multifield.levels_hpa 含重复气压层")
+        if min(levels) <= 0.0:
+            raise ValueError("multifield.levels_hpa 必须全部为正（hPa）")
+        if levels != sorted(levels, reverse=True):
+            raise ValueError(
+                "multifield.levels_hpa 必须按从地面到顶的降序排列（hPa）"
+            )
+        if self.surface.pressure_hpa <= max(levels):
+            raise ValueError(
+                "multifield.surface.pressure_hpa 必须大于最高的气压层（地面气压）"
+            )
+        if self.cloud.base_pressure_hpa <= self.cloud.top_pressure_hpa:
+            raise ValueError(
+                "multifield.cloud.base_pressure_hpa 必须大于 top_pressure_hpa"
+            )
+        return self
+
+    def stability(self) -> dict[str, float]:
+        """Return the CFL / diffusion numbers of the pattern driver."""
+
+        dt = float(self.time.dt_s)
+        dx = float(self.grid.dx_m)
+        dy = float(self.grid.dy_m)
+        cfl_x = abs(float(self.tracer.u0)) * dt / dx
+        cfl_y = abs(float(self.tracer.v0)) * dt / dy
+        r_x = float(self.tracer.kappa) * dt / dx**2
+        r_y = float(self.tracer.kappa) * dt / dy**2
+        return {
+            "cfl_x": cfl_x,
+            "cfl_y": cfl_y,
+            "diffusion_x": r_x,
+            "diffusion_y": r_y,
+            "diffusion_number": r_x + r_y,
+        }
+
+    def check_stability(self) -> list[str]:
+        """Return the stability problems of the pattern driver (empty = ok)."""
+
+        numbers = self.stability()
+        problems: list[str] = []
+        if numbers["cfl_x"] + 2 * numbers["diffusion_x"] > 1.0:
+            problems.append(
+                f"单轴稳定性 Cx+2r_x={numbers['cfl_x'] + 2 * numbers['diffusion_x']:.3f}>1"
+            )
+        if numbers["cfl_y"] + 2 * numbers["diffusion_y"] > 1.0:
+            problems.append(
+                f"单轴稳定性 Cy+2r_y={numbers['cfl_y'] + 2 * numbers['diffusion_y']:.3f}>1"
+            )
+        if numbers["diffusion_number"] > 0.5:
+            problems.append(
+                f"扩散稳定性={numbers['diffusion_number']:.3f}>0.5"
+            )
+        joint = (numbers["cfl_x"] + numbers["cfl_y"]) + 2 * numbers["diffusion_number"]
+        if joint > 1.0:
+            problems.append(f"2D 联合稳定性={joint:.3f}>1")
+        return problems
 
 
 class HybridPhysicsComponent(_StrictModel):
@@ -490,6 +680,7 @@ class GenerationConfigFile(_StrictModel):
     data: DataConfig | None = None
     generation: GenerationConfig
     physics: PhysicsConfig | None = None
+    multifield: MultifieldConfig | None = None
     hybrid: HybridConfig | None = None
     validation: ValidationConfig = Field(default_factory=ValidationConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
@@ -497,11 +688,28 @@ class GenerationConfigFile(_StrictModel):
     @model_validator(mode="after")
     def _check_mode_requirements(self) -> "GenerationConfigFile":
         mode = self.generation.mode
+        model = self.generation.model
         problems: list[str] = []
         if mode in {"statistical", "hybrid"} and self.data is None:
             problems.append(f"mode={mode} 需要 data 段（训练/条件生成需要真实数据）")
-        if mode in {"physics", "hybrid"} and self.physics is None:
+        if mode in {"physics", "hybrid"} and self.physics is None and model != "multifield":
             problems.append(f"mode={mode} 需要 physics 段（方程/网格/参数/IC/BC）")
+        if model == "multifield":
+            if self.multifield is None:
+                problems.append(
+                    "generation.model=multifield 需要 multifield 段"
+                    "（grid/time/levels_hpa/pattern/cloud 等耦合场参数）"
+                )
+            if self.physics is not None:
+                problems.append(
+                    "generation.model=multifield 不使用 physics 段（平流-扩散参数在 "
+                    "multifield.tracer 中）"
+                )
+        else:
+            if self.multifield is not None:
+                problems.append(
+                    "multifield 段只在 generation.model=multifield 时允许"
+                )
         if mode == "physics" and self.physics is not None and self.data is not None:
             # allowed: from_real initial conditions need real fields
             pass
@@ -513,6 +721,11 @@ class GenerationConfigFile(_StrictModel):
             if self.physics.initial_condition.kind == "from_real" and self.data is None:
                 problems.append(
                     "physics.initial_condition.kind=from_real 需要 data 段提供真实场"
+                )
+        if self.multifield is not None:
+            for problem in self.multifield.check_stability():
+                problems.append(
+                    "multifield 平流-扩散驱动参数不满足显式格式稳定性要求: " + problem
                 )
         if problems:
             raise ValueError("; ".join(problems))
@@ -836,6 +1049,14 @@ __all__ = [
     "HybridConfig",
     "IngestConfigFile",
     "MODELS_BY_MODE",
+    "MultifieldConfig",
+    "MultifieldCloudConfig",
+    "MultifieldGridConfig",
+    "MultifieldPatternConfig",
+    "MultifieldPrecipitationConfig",
+    "MultifieldSurfaceConfig",
+    "MultifieldTimeConfig",
+    "MultifieldTracerConfig",
     "PhysicsConfig",
     "SourceConfig",
     "ValidationConfig",

@@ -20,6 +20,7 @@ def test_registry_contains_all_planned_models():
         "ctgan",
         "tvae",
         "advection_diffusion",
+        "multifield",
         "analog_blocks",
         "hybrid",
     }
@@ -29,7 +30,10 @@ def test_registry_contains_all_planned_models():
         "tvae",
         "analog_blocks",
     ]
-    assert [spec.name for spec in list_models("physics")] == ["advection_diffusion"]
+    assert [spec.name for spec in list_models("physics")] == [
+        "advection_diffusion",
+        "multifield",
+    ]
 
 
 def test_unknown_model_error_lists_registered_models():

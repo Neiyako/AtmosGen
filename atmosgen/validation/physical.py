@@ -23,7 +23,16 @@
   指标 NOT_RUN 并写原因；数据集范围不适用（无云水变量、无 c、非物理模式、无
   periodic 配置）记 INFO 并写原因（INFO 不是 PASS、不参与聚合，但也不会把合法的
   统计模式数据集整体判成 NOT_RUN）；``boundary_conditions`` / ``kappa`` / ``dt_s``
-  也可从数据集 ``atmosgen:contract`` 属性回退读取（便于 evaluate 直接传 synthetic）。
+  也可从数据集 ``atmosgen:contract`` 属性回退读取（便于 evaluate 直接传 synthetic）；
+- schema 1.2 变量系统扩展（登记册见 ``atmosgen/variables.py``）新增的检查：
+  ``sp_range``（地面气压 Pa）、``w_range``（垂直速度 Pa/s，正=上升）、``z_range``
+  （位势 m² s⁻²）、``tp_nonneg``（累积降水 kg m⁻² ≡ mm，非率）、``rh_range``
+  （相对湿度 %，云内过饱和只报告不裁剪）、``column_consistency``（列变量定义
+  tclw≡cwp / tciw≡iwp / twp=cwp+iwp）、``tcwv_integral_consistency``（tcwv 与
+  (1/g)∫q dp 的比较，软指标：统计/混合模式下 tcwv 是联合生成量，偏差只报告）、
+  ``flux_consistency``（qflux_u=q·u、qflux_v=q·v）、``mfc_consistency``
+  （mfc=−div(qflux_u_col,qflux_v_col)、mfc_sl=−div(qflux_u,qflux_v) 最低层）；
+  这几项缺「可选变量」时记 INFO（该约束不适用），缺「必需输入」时记 NOT_RUN。
 """
 
 from __future__ import annotations
@@ -45,6 +54,20 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
     "wind_max": 150.0,
     "tcwv_max": 120.0,
     "saturation_factor_max": 1.10,
+    # --- schema 1.2 变量系统扩展（与 atmosgen/config.py 的 THRESHOLD_LIMITS 对齐，
+    #     用户可用 validation.thresholds_overrides 覆盖）------------------------ #
+    "sp_min": 50000.0,           # Pa
+    "sp_max": 110000.0,          # Pa
+    "w_max": 10.0,               # Pa/s
+    "z_min": -5000.0,            # m2/s2
+    "z_max": 60000.0,            # m2/s2
+    "rh_min": 0.0,               # %
+    "rh_max": 200.0,             # %
+    "rh_supersaturation_max": 120.0,  # % 超过此值记为过饱和（只报告，不裁剪）
+    "tp_max": 1000.0,            # kg/m2
+    "column_max": 200.0,         # kg/m2（列水汽路径通用上限）
+    "consistency_rtol": 1.0e-6,  # 定义一致性的相对容差
+    "consistency_atol": 1.0e-9,  # 定义一致性的绝对容差（kg/m2 等）
 }
 
 #: 软指标期望（不在 DEFAULT_THRESHOLDS 里，避免改变硬约束阈值公开 API；
@@ -533,6 +556,732 @@ def _saturation_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# schema 1.2 扩展：地面/垂直坐标/湿度/降水 硬约束 + 定义一致性检查
+# --------------------------------------------------------------------------- #
+#: 列变量（单位 kg m⁻²）。``tcwv`` 的专属范围由 ``tcwv_range`` 把关，这里只做
+#: 「有限 + 非负 + ≤ column_max」的通用检查（负的列水汽路径没有物理含义 → 硬 FAIL）。
+_COLUMN_VARS: tuple[str, ...] = ("tcwv", "tclw", "tciw", "cwp", "iwp", "twp")
+#: 参与「定义一致性」两两比较的列变量。``tcwv`` 不在其中：它与 q 的垂直积分关系
+#: 单列为 ``tcwv_integral_consistency``（统计模式下 tcwv 是联合生成量，语义不同）。
+_COLUMN_PAIR_VARS: tuple[str, ...] = ("tclw", "tciw", "cwp", "iwp", "twp")
+#: 登记册里水汽通量变量的期望单位（仅用于「报告」单位不一致，不据此 FAIL）。
+_FLUX_UNITS_EXPECTED = "kg kg**-1 m s**-1"
+#: 上述单位的宽松等价写法（归一化后比较）。
+_FLUX_UNITS_SIGNATURES = frozenset({"kgkg1ms1", "kg/kg/m/s", "kgkg1m1s1"})
+#: 标准重力加速度（m s⁻²），用于 (1/g)∫q dp → kg m⁻²。
+_GRAVITY = 9.80665
+#: 变量维度的规范顺序（比较前统一排列，避免形状相同但轴序不同造成的误判）。
+_CANONICAL_DIMS: tuple[str, ...] = ("time", "level", "latitude", "longitude")
+#: schema 1.2 新增的指标名（notes 里单独列一行，便于读者看清哪些跑了）。
+_SCHEMA12_METRICS: tuple[str, ...] = (
+    "sp_range", "w_range", "z_range", "tp_nonneg", "rh_range",
+    "column_consistency", "tcwv_integral_consistency",
+    "flux_consistency", "mfc_consistency",
+)
+
+
+def _consistency_tol(th: Mapping[str, float]) -> tuple[float, float]:
+    """定义一致性检查的相对/绝对容差（相对容差随量级缩放，绝对容差兜底）。"""
+
+    rtol = float(th.get("consistency_rtol", DEFAULT_THRESHOLDS["consistency_rtol"]))
+    atol = float(th.get("consistency_atol", DEFAULT_THRESHOLDS["consistency_atol"]))
+    return rtol, atol
+
+
+def _units_signature(text: object) -> str:
+    """把单位字符串归一化（去空格、去 ``**``、``-1`` → ``1``），用于宽松比较。"""
+
+    s = str(text).strip().lower()
+    s = s.replace("**", "").replace("^", "")
+    s = s.replace("−", "-").replace("–", "-")
+    s = s.replace(" ", "").replace("\u00b7", "")
+    s = s.replace("-1", "1")
+    return s
+
+
+def _da_to_array(da) -> np.ndarray | None:
+    """把 DataArray 转成 float numpy 数组（按规范维度顺序排列）；非数值返回 None。"""
+
+    dims = [d for d in _CANONICAL_DIMS if d in da.dims]
+    dims += [d for d in da.dims if d not in dims]
+    arr = np.asarray(da.transpose(*dims).values)
+    if not _numeric(arr):
+        return None
+    return arr.astype(float, copy=False)
+
+
+def _ordered_array(ds, name: str) -> np.ndarray | None:
+    """取 ``ds[name]`` 的 float numpy 数组（规范维度顺序）；非数值返回 None。"""
+
+    if name not in ds.data_vars:
+        return None
+    return _da_to_array(ds[name])
+
+
+def _compare_pair(a: np.ndarray, b: np.ndarray, rtol: float,
+                  atol: float) -> dict[str, Any]:
+    """逐元素比较两个同形状数组。
+
+    判据：``|a-b| ≤ atol + rtol·max(|a|,|b|)``（相对容差随量级缩放，绝对容差兜底）。
+    只在双方同时有限的元素上比较（非有限元素由 ``finite`` 指标负责）。
+    """
+
+    if a is None or b is None:
+        return {"not_comparable": True}
+    if a.shape != b.shape:
+        return {"shape_mismatch": True, "a_shape": a.shape, "b_shape": b.shape}
+    finite = np.isfinite(a) & np.isfinite(b)
+    n_valid = int(np.count_nonzero(finite))
+    if n_valid == 0:
+        return {"n_valid": 0, "n_violation": 0, "max_abs": float("nan"),
+                "max_rel": float("nan"), "max_tol": atol}
+    av = a[finite]
+    bv = b[finite]
+    diff = np.abs(av - bv)
+    scale = np.maximum(np.abs(av), np.abs(bv))
+    tol = atol + rtol * scale
+    n_violation = int(np.count_nonzero(diff > tol))
+    max_abs = float(np.max(diff))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.where(scale > 0.0,
+                       diff / np.where(scale > 0.0, scale, 1.0),
+                       np.where(diff > 0.0, np.inf, 0.0))
+    max_rel = float(np.max(rel))
+    return {"n_valid": n_valid, "n_violation": n_violation, "max_abs": max_abs,
+            "max_rel": max_rel, "max_tol": float(np.max(tol))}
+
+
+def _trapz_integral(q_sorted: np.ndarray, p_pa: np.ndarray) -> np.ndarray:
+    """沿第 0 轴做梯形积分（``q_sorted`` 已按气压升序排列，``p_pa`` 单位 Pa）。"""
+
+    n = int(p_pa.size)
+    if n < 2:
+        return np.zeros(q_sorted.shape[1:], dtype=float)
+    dp = np.diff(p_pa)
+    weights = np.empty(n, dtype=float)
+    weights[0] = dp[0] / 2.0
+    weights[-1] = dp[-1] / 2.0
+    weights[1:-1] = (dp[:-1] + dp[1:]) / 2.0
+    return np.tensordot(weights, q_sorted, axes=(0, 0))
+
+
+def _lowest_level_index(ds) -> tuple[int, str]:
+    """返回（最低层索引, 说明）。气压坐标取气压最大处，否则按降序层序取最后一层。"""
+
+    for lname in _LEVEL_NAMES:
+        if lname in ds.coords or lname in ds.variables:
+            raw = np.asarray(ds[lname].values, dtype=float).ravel()
+            if raw.size == 0:
+                continue
+            _, level_hpa, _, note = _level_to_hpa(ds)
+            if level_hpa is not None and level_hpa.size == raw.size:
+                idx = int(np.argmax(level_hpa))
+                return idx, (f"{lname} 的最低层（气压最大处 {level_hpa[idx]:g} hPa，"
+                             f"{note}）")
+            return int(raw.size - 1), f"{lname} 的最后一层（非气压坐标，按降序层序约定）"
+    return 0, "无 level 维（单层场直接使用）"
+
+
+def _z_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """位势 z 的合理范围（逐层水静力参考带，m² s⁻²）。
+
+    位势量产纲 m² s⁻² 随气压层强变化（100 hPa 处约 1.7e5，1000 hPa 处约 0），
+    单一全局区间会把合法的高层判 FAIL；因此本检查在存在气压层坐标时改为
+    逐层参考带：z_ref(p) = R_d·T·ln(p_s/p)，T ∈ [200, 320] K，再放宽
+    ±2000 m² s⁻² 以兼容基准面（MSL/地面）取法差异。无气压层坐标时退化为
+    全局区间〔z_min, z_max〕。缺 z 变量 → INFO（该约束不适用）。
+    """
+
+    if "z" not in ds.data_vars:
+        return _info(None, None, "数据集无 z 变量，无法检查位势范围"
+                    "（该约束不适用，INFO 不是 PASS）")
+    _, level_hpa, _, note = _level_to_hpa(ds)
+    arr = np.asarray(ds["z"].values, dtype=float)
+    finite = np.isfinite(arr)
+    if not finite.any():
+        return _not_run(th.get("z_max", 60000.0), "range", "z 全部为非有限值，无法检查范围")
+
+    if level_hpa is not None and "level" in ds["z"].dims:
+        # z 维顺序与 level 一致或已按时间在前，按 level 轴展开参考带
+        z_values = np.moveaxis(arr, ds["z"].get_axis_num("level"), -1)  # [..., nlev]
+        z_finite = np.isfinite(z_values)
+        ln = np.log(np.asarray(level_hpa, dtype=float) ** 0)  # placeholder, replaced below
+        # 参考带：z_ref(p) = R_d * T * ln(p_surface/p)，T ∈ [200, 320] K
+        p_hpa = np.asarray(level_hpa, dtype=float)
+        if (p_hpa > 0).all():
+            p_s = float(np.max(p_hpa))
+            ratio = np.log(p_s / p_hpa)  # >= 0，地面上最大
+            z_ref_lo = 287.058 * 200.0 * ratio - 2000.0
+            z_ref_hi = 287.058 * 320.0 * ratio + 2000.0
+            n_below = int(np.count_nonzero(z_finite & (z_values < z_ref_lo)))
+            n_above = int(np.count_nonzero(z_finite & (z_values > z_ref_hi)))
+            mn = float(np.nanmin(z_values))
+            mx = float(np.nanmax(z_values))
+            detail = (
+                f"逐层水静力参考带（R_d·T·ln(p_s/p)，T∈[200,320] K，±2000 m² s⁻² 放宽）, "
+                f"{note}, n_z={int(z_finite.sum())}, z∈[{mn:.4g}, {mx:.4g}], "
+                f"n_below={n_below}, n_above={n_above}"
+            )
+            status = "FAIL" if (n_below or n_above) else "PASS"
+            value = mx if n_above else (mn if n_below else mx)
+            return _metric(value, th.get("z_max", 60000.0), "range", status, detail)
+    lo = float(th.get("z_min", -5000.0))
+    hi = float(th.get("z_max", 60000.0))
+    n_bad = int(np.count_nonzero(finite & ((arr < lo) | (arr > hi))))
+    detail = (f"全局区间 [{lo:g}, {hi:g}] m² s⁻²（无可用气压层坐标，退化检查）, "
+              f"n_bad={n_bad}, z∈[{float(np.nanmin(arr)):.4g}, {float(np.nanmax(arr)):.4g}]")
+    return _metric(float(np.nanmax(arr)), hi, "range", "FAIL" if n_bad else "PASS", detail)
+
+def _w_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """垂直速度 w 的范围硬约束：|w| ≤ w_max（Pa/s，正 = 上升运动）。"""
+
+    limit = float(th.get("w_max", DEFAULT_THRESHOLDS["w_max"]))
+    if "w" not in ds.data_vars:
+        return _info(None, None,
+                     "数据集无 w（垂直速度）变量，无法检查垂直速度范围"
+                     "（该约束不适用，INFO 不是 PASS）")
+    arr = np.asarray(ds["w"].values)
+    if not _numeric(arr):
+        return _not_run(limit, "max",
+                        f"w 的 dtype={arr.dtype} 非数值，无法检查垂直速度范围")
+    finite = np.isfinite(arr)
+    n_valid = int(np.count_nonzero(finite))
+    n_skipped = int(arr.size - n_valid)
+    if n_valid == 0:
+        return _not_run(limit, "max",
+                        f"w 全部为非有限值（n={arr.size}），无法检查垂直速度范围")
+    mn = float(np.nanmin(arr))
+    mx = float(np.nanmax(arr))
+    absmax = max(abs(mn), abs(mx))
+    n_over = int(np.count_nonzero(finite & ((arr > limit) | (arr < -limit))))
+    detail = (f"limit=±{limit:g} Pa/s; n={n_valid}, min={mn:.4g} Pa/s, "
+              f"max={mx:.4g} Pa/s, max|w|={absmax:.4g} Pa/s, n_over={n_over}, "
+              f"排除非有限={n_skipped}; 单位 Pa/s（ERA5 约定：正值 = 上升运动，"
+              "即气压随高度减小），不是 m/s")
+    status = "FAIL" if n_over else "PASS"
+    return _metric(absmax, limit, "max", status, detail)
+
+
+def _tp_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """累积降水 tp：≥ 0 且 ≤ tp_max（kg m⁻²）。"""
+
+    tp_max = float(th.get("tp_max", DEFAULT_THRESHOLDS["tp_max"]))
+    if "tp" not in ds.data_vars:
+        return _info(None, None,
+                     "数据集无 tp（累积降水）变量，无法检查降水量范围"
+                     "（该约束不适用，INFO 不是 PASS）")
+    arr = np.asarray(ds["tp"].values)
+    if not _numeric(arr):
+        return _not_run(tp_max, "range",
+                        f"tp 的 dtype={arr.dtype} 非数值，无法检查降水量范围")
+    finite = np.isfinite(arr)
+    n_valid = int(np.count_nonzero(finite))
+    n_skipped = int(arr.size - n_valid)
+    if n_valid == 0:
+        return _not_run(tp_max, "range",
+                        f"tp 全部为非有限值（n={arr.size}），无法检查降水量范围")
+    n_below = int(np.count_nonzero(finite & (arr < 0.0)))
+    n_above = int(np.count_nonzero(finite & (arr > tp_max)))
+    mn = float(np.nanmin(arr))
+    mx = float(np.nanmax(arr))
+    value = mx if n_above else (mn if n_below else mx)
+    detail = (f"n={n_valid}, min={mn:.4g} kg/m2, max={mx:.4g} kg/m2, "
+              f"bounds=[0, {tp_max:g}] kg/m2, n_below(0)={n_below}, "
+              f"n_above({tp_max:g})={n_above}, 排除非有限={n_skipped}; "
+              "tp 是「以该时戳为终点的时间区间」的累积量（kg/m2 ≡ mm 液态当量），"
+              "不是瞬时率（瞬时率 = tp / dt）")
+    status = "FAIL" if (n_below or n_above) else "PASS"
+    return _metric(value, tp_max, "range", status, detail)
+
+
+def _rh_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """相对湿度 rh/r 的范围检查（%）。
+
+    - 越出 ``[rh_min, rh_max]`` → 物理上不可能 → FAIL；
+    - 落在 ``(rh_supersaturation_max, rh_max]`` → 云内过饱和（物理上可能）→
+      CONDITIONAL_PASS，按项目口径只报告、不裁剪、不改写；
+    - ``rh`` 与 ``r`` 是同一量的两个别名，逐个检查后取最差状态。
+    """
+
+    lo = float(th.get("rh_min", DEFAULT_THRESHOLDS["rh_min"]))
+    hi = float(th.get("rh_max", DEFAULT_THRESHOLDS["rh_max"]))
+    ss_max = float(th.get("rh_supersaturation_max",
+                           DEFAULT_THRESHOLDS["rh_supersaturation_max"]))
+    present = [n for n in ("rh", "r") if n in ds.data_vars]
+    if not present:
+        return _info(None, None,
+                     "数据集无 rh / r（相对湿度）变量，无法检查相对湿度范围"
+                     "（该约束不适用，INFO 不是 PASS）")
+    parts: list[str] = []
+    n_below = 0
+    n_above = 0
+    n_super = 0
+    n_valid = 0
+    n_skipped = 0
+    worst = float("nan")
+    for name in present:
+        arr = np.asarray(ds[name].values)
+        if not _numeric(arr):
+            parts.append(f"{name}: dtype={arr.dtype} 非数值（未验证）")
+            continue
+        finite = np.isfinite(arr)
+        nv = int(np.count_nonzero(finite))
+        n_valid += nv
+        n_skipped += int(arr.size - nv)
+        if nv == 0:
+            parts.append(f"{name}: 全非有限（该别名未验证）")
+            continue
+        below = int(np.count_nonzero(finite & (arr < lo)))
+        above = int(np.count_nonzero(finite & (arr > hi)))
+        super_sat = int(np.count_nonzero(finite & (arr > ss_max) & (arr <= hi)))
+        n_below += below
+        n_above += above
+        n_super += super_sat
+        mx = float(np.nanmax(arr))
+        worst = mx if np.isnan(worst) else max(worst, mx)
+        parts.append(f"{name}: n={nv}, min={float(np.nanmin(arr)):.4g} %, "
+                     f"max={mx:.4g} %, n_below={below}, n_above={above}, "
+                     f"n_supersat={super_sat}")
+    if n_valid == 0:
+        return _not_run(hi, "range",
+                        "rh / r 全部为非有限值，无法检查相对湿度范围: " + _short(parts))
+    detail = (f"bounds=[{lo:g}, {hi:g}] %, supersat_limit={ss_max:g} %, "
+              + "; ".join(parts)
+              + f"; 合计 n_below={n_below}, n_above={n_above}, n_supersat={n_super}, "
+              f"排除非有限={n_skipped}; rh 与 r 是同一量的别名（同公式、同数值），"
+              f"在场别名 {present}")
+    if n_below or n_above:
+        status = "FAIL"
+        detail += ("; 相对湿度越出容许区间在物理上不可能 —— 这是硬约束违例，"
+                   "不是数值误差，也不是「真实极端」")
+    elif n_super:
+        status = "CONDITIONAL_PASS"
+        detail += (f"; 有 {n_super} 个点落在 ({ss_max:g}, {hi:g}] % 的过饱和区"
+                   "（云内过饱和物理上可能），按项目口径只报告、不裁剪、不改写")
+    else:
+        status = "PASS"
+    return _metric(worst, hi, "range", status, detail)
+
+
+def _column_consistency_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """列变量（kg m⁻²）的定义一致性与通用范围检查。
+
+    定义关系（硬定义，逐点必须相等）：``tclw ≡ cwp``、``tciw ≡ iwp``、
+    ``twp = cwp + iwp``。通用范围：在场的列变量必须有限、≥ 0、≤ ``column_max``。
+    ``tcwv`` 与 q 的垂直积分关系单列为 ``tcwv_integral_consistency``。
+    """
+
+    rtol, atol = _consistency_tol(th)
+    column_max = float(th.get("column_max", DEFAULT_THRESHOLDS["column_max"]))
+    present = [n for n in _COLUMN_VARS if n in ds.data_vars]
+    if not present:
+        return _info(None, None,
+                     "数据集不含 tcwv/tclw/tciw/cwp/iwp/twp 列变量，"
+                     "列变量一致性约束不适用（INFO 不是 PASS）")
+
+    # --- 通用范围（有限 / 非负 / 上限） ---
+    gen_parts: list[str] = []
+    n_neg = 0
+    n_above = 0
+    for name in present:
+        arr = np.asarray(ds[name].values)
+        if not _numeric(arr):
+            gen_parts.append(f"{name}: dtype={arr.dtype} 非数值（未验证）")
+            continue
+        finite = np.isfinite(arr)
+        nv = int(np.count_nonzero(finite))
+        if nv == 0:
+            gen_parts.append(f"{name}: 全非有限（未验证）")
+            continue
+        neg = int(np.count_nonzero(finite & (arr < 0.0)))
+        above = int(np.count_nonzero(finite & (arr > column_max)))
+        n_neg += neg
+        n_above += above
+        gen_parts.append(f"{name}: n={nv}, min={float(np.nanmin(arr)):.4g}, "
+                         f"max={float(np.nanmax(arr)):.4g}, n_negative={neg}, "
+                         f"n_above({column_max:g})={above}")
+    gen_fail = bool(n_neg or n_above)
+
+    # --- 定义一致性（两两比较） ---
+    pairs: list[tuple[str, np.ndarray | None, np.ndarray | None, str]] = []
+    for left, right, note in (("tclw", "cwp", "tclw ≡ cwp（同一量，两个名字）"),
+                               ("tciw", "iwp", "tciw ≡ iwp（同一量，两个名字）")):
+        if left in ds.data_vars and right in ds.data_vars:
+            pairs.append((f"{left} vs {right}",
+                          _ordered_array(ds, left), _ordered_array(ds, right), note))
+    if "twp" in ds.data_vars and "cwp" in ds.data_vars and "iwp" in ds.data_vars:
+        cwp_a = _ordered_array(ds, "cwp")
+        iwp_a = _ordered_array(ds, "iwp")
+        sum_arr = None
+        if cwp_a is not None and iwp_a is not None and cwp_a.shape == iwp_a.shape:
+            sum_arr = cwp_a + iwp_a
+        pairs.append(("twp vs cwp+iwp", _ordered_array(ds, "twp"), sum_arr,
+                      "twp = cwp + iwp（按定义）"))
+
+    pair_parts: list[str] = []
+    n_violation = 0
+    compared = 0
+    worst_pair = ""
+    worst_abs = 0.0
+    worst_rel = 0.0
+    for label, a, b, note in pairs:
+        if a is None or b is None:
+            pair_parts.append(f"{label}: 非数值，未比较")
+            continue
+        res = _compare_pair(a, b, rtol, atol)
+        if res.get("shape_mismatch"):
+            pair_parts.append(f"{label}: 形状不一致 {res['a_shape']} vs "
+                              f"{res['b_shape']}，未比较")
+            continue
+        compared += 1
+        n_violation += int(res["n_violation"])
+        pair_parts.append(f"{label}（{note}）: n={res['n_valid']}, "
+                          f"max|Δ|={res['max_abs']:.4g} kg/m2, "
+                          f"max相对偏差={res['max_rel']:.4g}, "
+                          f"越限点={res['n_violation']}")
+        if float(res["max_abs"]) > worst_abs:
+            worst_abs = float(res["max_abs"])
+            worst_rel = float(res["max_rel"])
+            worst_pair = label
+
+    detail = ("通用范围: " + _short(gen_parts)
+              + f"; 容差 tol = atol + rtol·max(|a|,|b|) (atol={atol:g}, rtol={rtol:g}), "
+              f"column_max={column_max:g} kg/m2")
+    if pair_parts:
+        detail += "; 定义一致性: " + _short(pair_parts)
+    if gen_fail:
+        status = "FAIL"
+        detail += (f"; 列变量出现负值({n_neg})或超过 column_max({n_above}) —— "
+                   "负的列水汽路径没有物理含义，这是硬约束违例，不是数值误差")
+    elif n_violation:
+        status = "FAIL"
+        detail += (f"; 越限的一致性对: {worst_pair}（按定义为同一量，必须逐点相等），"
+                   f"最差绝对偏差 {worst_abs:.4g} kg/m2（相对 {worst_rel:.4g}）")
+    elif compared:
+        status = "PASS"
+    else:
+        status = "INFO"
+        detail += ("; 数据集含列变量但缺少可比较的一致性对"
+                   "（tclw≡cwp / tciw≡iwp / twp=cwp+iwp 均缺一端），"
+                   "定义一致性检查不适用——本项只完成通用范围检查（INFO 不是 PASS）")
+    return _metric(n_violation, 0.0, "max", status, detail)
+
+
+def _tcwv_integral_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """tcwv 与 ``(1/g)∫q dp`` 的一致性（软指标）。
+
+    - 偏差在容差内 → PASS；
+    - 偏差超出容差 → **CONDITIONAL_PASS**（不是 FAIL）：统计 / 混合生成模式下 tcwv
+      是与 q 联合生成的列变量，并不是所生成 q 的垂直积分，两者出现偏差是预期内的；
+      偏差只报告，不把统计上的相关关系说成物理因果关系。
+    """
+
+    rtol, atol = _consistency_tol(th)
+    if "tcwv" not in ds.data_vars:
+        return _info(None, None,
+                     "数据集不含 tcwv（整层水汽）变量，tcwv 与 q 垂直积分的"
+                     "一致性检查不适用（INFO 不是 PASS）")
+    if "q" not in ds.data_vars:
+        return _not_run(None, "max",
+                        "tcwv 与垂直积分一致性未运行: 数据集含 tcwv 但缺少 q"
+                        "（比湿，整层积分的输入），无法计算 (1/g)∫q dp")
+    _, level_hpa, level_name, level_note = _level_to_hpa(ds)
+    if level_hpa is None:
+        # NOTE: the shared level note may contain the "absent" markers used by
+        # the aggregator ("数据集无" / "不适用"). Here the level coordinate is a
+        # genuinely missing INPUT, so the reason must not carry those markers:
+        # the metric stays a real NOT_RUN and still participates in the verdict.
+        safe_note = (level_note.replace("数据集无", "数据集缺少")
+                             .replace("数据集不含", "数据集缺少")
+                             .replace("不适用", "不成立"))
+        return _not_run(None, "max",
+                        f"tcwv 与垂直积分一致性未运行: level 坐标不可用（{safe_note}）")
+    if level_hpa.size < 2:
+        return _not_run(None, "max", (
+            f"tcwv 与垂直积分一致性未运行: level 坐标只有 {level_hpa.size} 层，"
+            "梯形积分退化（Δp=0，整层积分不可估），该检查对单层数据集不适用"
+            "（physics 模式的单层数据集没有垂直范围）"))
+    q_da = ds["q"]
+    if level_name not in q_da.dims:
+        return _not_run(None, "max",
+                        f"tcwv 与垂直积分一致性未运行: q 的维度 "
+                        f"{sorted(q_da.dims)} 不含 level 维（坐标名 {level_name!r}）")
+
+    order = np.argsort(level_hpa)
+    p_pa = level_hpa[order] * 100.0
+    q_sorted = q_da.isel({level_name: order})
+    tcwv_da = ds["tcwv"]
+    has_time_q = "time" in q_sorted.dims
+    has_time_t = "time" in tcwv_da.dims
+    n_q_time = int(q_sorted.sizes["time"]) if has_time_q else 1
+    n_t_time = int(tcwv_da.sizes["time"]) if has_time_t else 1
+
+    integrals: list[np.ndarray] = []
+    for it in range(n_q_time):
+        frame = q_sorted.isel(time=it) if has_time_q else q_sorted
+        if not {"latitude", "longitude"} <= set(frame.dims):
+            return _not_run(None, "max",
+                            f"tcwv 与垂直积分一致性未运行: q 缺少 "
+                            f"latitude/longitude 维（{sorted(frame.dims)}）")
+        arr = np.asarray(frame.transpose(level_name, "latitude",
+                                          "longitude").values, dtype=float)
+        integrals.append(_trapz_integral(arr, p_pa) / _GRAVITY)
+
+    max_abs = 0.0
+    max_rel = 0.0
+    n_violation = 0
+    n_valid = 0
+    for it in range(n_t_time):
+        frame = tcwv_da.isel(time=it) if has_time_t else tcwv_da
+        if not {"latitude", "longitude"} <= set(frame.dims):
+            return _not_run(None, "max",
+                            f"tcwv 与垂直积分一致性未运行: tcwv 缺少 "
+                            f"latitude/longitude 维（{sorted(frame.dims)}）")
+        tv = np.asarray(frame.transpose("latitude", "longitude").values, dtype=float)
+        expected = integrals[it if it < len(integrals) else 0]
+        if tv.shape != expected.shape:
+            return _not_run(None, "max",
+                            f"tcwv 与垂直积分一致性未运行: tcwv 形状 {tv.shape} 与 "
+                            f"积分结果 {expected.shape} 不一致，无法逐点比较")
+        res = _compare_pair(tv, expected, rtol, atol)
+        if res.get("shape_mismatch"):
+            return _not_run(None, "max",
+                            f"tcwv 与垂直积分一致性未运行: 形状不一致 "
+                            f"{res['a_shape']} vs {res['b_shape']}")
+        n_valid += int(res["n_valid"])
+        n_violation += int(res["n_violation"])
+        max_abs = max(max_abs, float(res["max_abs"]))
+        max_rel = max(max_rel, float(res["max_rel"]))
+    if n_valid == 0:
+        return _not_run(None, "max",
+                        "tcwv 与垂直积分一致性未运行: tcwv 与积分结果没有可比较的"
+                        "有限元素")
+
+    status = "PASS" if n_violation == 0 else "CONDITIONAL_PASS"
+    detail = (f"tcwv vs (1/g)∫q dp: n={n_valid}, max|Δ|={max_abs:.6g} kg/m2 "
+              f"（相对 {max_rel:.4g} = {max_rel * 100:.4g} %）, "
+              f"越限点={n_violation}, 容差 tol = atol + rtol·max(|a|,|b|) "
+              f"(atol={atol:g}, rtol={rtol:g}), 层数={level_hpa.size}, {level_note}")
+    if status == "CONDITIONAL_PASS":
+        detail += ("; 在统计 / 混合（statistical / hybrid）生成模式中 tcwv 是与 q "
+                   "联合生成的列变量，并不是所生成 q 的垂直积分，因此两者出现偏差是"
+                   "预期内的——不得把统计上的相关关系当作物理因果关系；"
+                   "偏差只报告，不修正、不裁剪、不改写数据")
+    return _metric(max_rel, rtol, "max", status, detail)
+
+
+def _flux_consistency_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """水汽通量的定义一致性：``qflux_u = q·u``、``qflux_v = q·v``（硬定义）。"""
+
+    rtol, atol = _consistency_tol(th)
+    available: list[tuple[str, str]] = []
+    missing: list[str] = []
+    for flux, wind in (("qflux_u", "u"), ("qflux_v", "v")):
+        lack = [n for n in (flux, "q", wind) if n not in ds.data_vars]
+        if lack:
+            missing.append(f"{flux} 缺 {'/'.join(lack)}")
+        else:
+            available.append((flux, wind))
+    if not available:
+        return _info(None, None,
+                     "数据集不含 qflux_u/qflux_v 或缺少配对输入 q/u、q/v，"
+                     "水汽通量定义一致性约束不适用（INFO 不是 PASS）")
+
+    parts: list[str] = []
+    n_violation = 0
+    compared = 0
+    worst_abs = 0.0
+    worst_rel = 0.0
+    for flux, wind in available:
+        f_arr = _ordered_array(ds, flux)
+        q_arr = _ordered_array(ds, "q")
+        w_arr = _ordered_array(ds, wind)
+        if f_arr is None or q_arr is None or w_arr is None:
+            parts.append(f"{flux}: 非数值，未比较")
+            continue
+        if f_arr.shape != q_arr.shape or f_arr.shape != w_arr.shape:
+            parts.append(f"{flux}: 形状不一致 {f_arr.shape} vs q{q_arr.shape}/"
+                          f"{wind}{w_arr.shape}，未比较")
+            continue
+        res = _compare_pair(f_arr, q_arr * w_arr, rtol, atol)
+        compared += 1
+        n_violation += int(res["n_violation"])
+        parts.append(f"{flux} vs q·{wind}: n={res['n_valid']}, "
+                     f"max|Δ|={res['max_abs']:.4g}, max相对偏差={res['max_rel']:.4g}, "
+                     f"越限点={res['n_violation']}")
+        if float(res["max_abs"]) > worst_abs:
+            worst_abs = float(res["max_abs"])
+            worst_rel = float(res["max_rel"])
+
+    unit_notes: list[str] = []
+    for flux in ("qflux_u", "qflux_v"):
+        if flux not in ds.data_vars:
+            continue
+        raw_units = ds[flux].attrs.get("units")
+        if raw_units is None:
+            unit_notes.append(f"{flux}: 无 units 属性（仅记录，不判 FAIL）")
+        elif _units_signature(raw_units) in _FLUX_UNITS_SIGNATURES:
+            unit_notes.append(f"{flux}: units={raw_units!r} 与登记册一致")
+        else:
+            unit_notes.append(f"{flux}: units={raw_units!r} 与登记册期望 "
+                              f"{_FLUX_UNITS_EXPECTED!r} 不一致（仅记录，不判 FAIL）")
+
+    detail = ("; ".join(parts)
+              + f"; 容差 tol = atol + rtol·max(|a|,|b|) (atol={atol:g}, rtol={rtol:g})")
+    if unit_notes:
+        detail += "; 单位核对: " + _short(unit_notes)
+    if missing:
+        detail += f"; 未检查的通量分量: {_short(missing)}"
+    if n_violation:
+        status = "FAIL"
+        detail += ("; 通量与 q·风 的定义关系被违反（按定义为恒等式）——"
+                   f"最差绝对偏差 {worst_abs:.4g}（相对 {worst_rel:.4g}）")
+    elif compared:
+        status = "PASS"
+    else:
+        status = "NOT_RUN"
+        detail += "; 没有任何一对可逐元素比较（形状/类型不兼容）"
+    return _metric(n_violation, 0.0, "max", status, detail)
+
+
+def _mfc_consistency_entry(ds, th: Mapping[str, float]) -> dict[str, Any]:
+    """水汽通量辐散的定义一致性（硬定义）。
+
+    - ``mfc = −div(qflux_u_col, qflux_v_col)``（整层辐散，kg m⁻² s⁻¹）；
+    - ``mfc_sl = −div(qflux_u, qflux_v)``（最低层的单层诊断，kg kg⁻¹ s⁻¹）。
+
+    ``horizontal_divergence`` 来自 ``atmosgen.derived``（惰性导入）；导入失败时
+    本项记 NOT_RUN 并写明原因，不伪造 PASS。
+    """
+
+    rtol, atol = _consistency_tol(th)
+    has_mfc = "mfc" in ds.data_vars
+    has_sl = "mfc_sl" in ds.data_vars
+    if not has_mfc and not has_sl:
+        return _info(None, None,
+                     "数据集不含 mfc / mfc_sl（水汽通量辐散）变量，"
+                     "辐散定义一致性约束不适用（INFO 不是 PASS）")
+    try:
+        from ..derived import horizontal_divergence
+    except Exception as exc:  # noqa: BLE001 - 依赖缺失时降级为 NOT_RUN
+        return _not_run(None, "max",
+                        f"水汽通量辐散一致性未运行: 依赖 atmosgen.derived."
+                        f"horizontal_divergence 不可用"
+                        f"（{type(exc).__name__}: {exc}）")
+
+    parts: list[str] = []
+    states: list[str] = []
+    n_violation = 0
+    compared = 0
+    worst_abs = 0.0
+    worst_rel = 0.0
+
+    if has_mfc:
+        lack = [n for n in ("qflux_u_col", "qflux_v_col") if n not in ds.data_vars]
+        if lack:
+            parts.append("mfc: 数据集存在 mfc 变量，但缺少 " + "/".join(lack)
+                         + "（mfc 的定义输入），未比较")
+            states.append("NOT_RUN")
+        else:
+            try:
+                expected = -horizontal_divergence(ds["qflux_u_col"],
+                                                  ds["qflux_v_col"])
+            except Exception as exc:  # noqa: BLE001 - 依赖侧失败降级为 NOT_RUN
+                parts.append(f"mfc: 调用 atmosgen.derived.horizontal_divergence "
+                             f"失败（{type(exc).__name__}: {exc}），未比较")
+                states.append("NOT_RUN")
+                expected = None
+            if expected is not None:
+                exp_arr = _da_to_array(expected)
+                if exp_arr is None:
+                    parts.append("mfc: 散度结果非数值，未比较")
+                    states.append("NOT_RUN")
+                    expected = None
+            if expected is not None:
+                res = _compare_pair(_ordered_array(ds, "mfc"),
+                                    _da_to_array(expected), rtol, atol)
+                if res.get("not_comparable"):
+                    parts.append("mfc: 非数值，未比较")
+                    states.append("NOT_RUN")
+                elif res.get("shape_mismatch"):
+                    parts.append(f"mfc: 形状不一致 {res['a_shape']} vs "
+                                 f"{res['b_shape']}，未比较")
+                    states.append("NOT_RUN")
+                else:
+                    compared += 1
+                    n_violation += int(res["n_violation"])
+                    worst_abs = max(worst_abs, float(res["max_abs"]))
+                    worst_rel = max(worst_rel, float(res["max_rel"]))
+                    parts.append(f"mfc vs −div(qflux_u_col, qflux_v_col): "
+                                 f"n={res['n_valid']}, max|Δ|={res['max_abs']:.4g}, "
+                                 f"max相对偏差={res['max_rel']:.4g}, "
+                                 f"越限点={res['n_violation']}")
+                    states.append("FAIL" if res["n_violation"] else "PASS")
+
+    if has_sl:
+        lack = [n for n in ("qflux_u", "qflux_v") if n not in ds.data_vars]
+        if lack:
+            parts.append("mfc_sl: 数据集存在 mfc_sl 变量，但缺少 " + "/".join(lack)
+                         + "（单层辐散的定义输入），未比较")
+            states.append("NOT_RUN")
+        else:
+            idx, level_note = _lowest_level_index(ds)
+            qu = ds["qflux_u"]
+            qv = ds["qflux_v"]
+            for lname in _LEVEL_NAMES:
+                if lname in qu.dims:
+                    qu = qu.isel({lname: idx})
+                    qv = qv.isel({lname: idx})
+                    break
+            try:
+                expected = -horizontal_divergence(qu, qv)
+            except Exception as exc:  # noqa: BLE001 - 依赖侧失败降级为 NOT_RUN
+                parts.append(f"mfc_sl: 调用 atmosgen.derived.horizontal_divergence "
+                             f"失败（{type(exc).__name__}: {exc}），未比较")
+                states.append("NOT_RUN")
+                expected = None
+            if expected is not None:
+                exp_arr = _da_to_array(expected)
+                if exp_arr is None:
+                    parts.append("mfc_sl: 散度结果非数值，未比较")
+                    states.append("NOT_RUN")
+                    expected = None
+            if expected is not None:
+                res = _compare_pair(_ordered_array(ds, "mfc_sl"),
+                                    _da_to_array(expected), rtol, atol)
+                if res.get("not_comparable"):
+                    parts.append("mfc_sl: 非数值，未比较")
+                    states.append("NOT_RUN")
+                elif res.get("shape_mismatch"):
+                    parts.append(f"mfc_sl: 形状不一致 {res['a_shape']} vs "
+                                 f"{res['b_shape']}，未比较")
+                    states.append("NOT_RUN")
+                else:
+                    compared += 1
+                    n_violation += int(res["n_violation"])
+                    worst_abs = max(worst_abs, float(res["max_abs"]))
+                    worst_rel = max(worst_rel, float(res["max_rel"]))
+                    parts.append(f"mfc_sl vs −div(qflux_u, qflux_v)（{level_note}）: "
+                                 f"n={res['n_valid']}, max|Δ|={res['max_abs']:.4g}, "
+                                 f"max相对偏差={res['max_rel']:.4g}, "
+                                 f"越限点={res['n_violation']}")
+                    states.append("FAIL" if res["n_violation"] else "PASS")
+
+    detail = ("; ".join(parts)
+              + f"; 容差 tol = atol + rtol·max(|a|,|b|) (atol={atol:g}, rtol={rtol:g})")
+    if "FAIL" in states:
+        status = "FAIL"
+        detail += ("; 辐散与通量的散度定义被违反（按定义为恒等式）——"
+                   f"最差绝对偏差 {worst_abs:.4g}（相对 {worst_rel:.4g}）")
+    elif "NOT_RUN" in states:
+        status = "NOT_RUN"
+        detail += "; 有分量因缺输入未比较（真实 NOT_RUN，不是 PASS）"
+    else:
+        status = "PASS"
+    return _metric(n_violation, 0.0, "max", status, detail)
+
+
+# --------------------------------------------------------------------------- #
 # 软指标：mass_budget / smoothness / equation_residual
 # --------------------------------------------------------------------------- #
 def _boundary_kind(ds, pp: Mapping[str, Any] | None) -> tuple[str | None, str]:
@@ -871,6 +1620,16 @@ def _equation_residual_entry(ds, pp: Mapping[str, Any] | None) -> dict[str, Any]
     # the per-level residual form is a documented Phase 4+ limitation.
     advected_name = "c"
     missing = [n for n in ("c",) if n not in ds.data_vars]
+    # multifield 耦合场生成器不产出独立示踪变量 c（所有场由平流-扩散模式场
+    # 驱动构造），扩散/平流结构已由该驱动承担，方程残差对该数据集不适用，
+    # 记 INFO（不参与聚合，不把 NOT_RUN 伪装成 PASS）。
+    if missing and str(_contract(ds).get("model_name") or "").startswith(
+            "physics.multifield"):
+        return _info(None, None, (
+            "方程残差不适用: multifield 耦合场数据集无独立示踪变量 c"
+            "（平流-扩散结构由模式场驱动承担，其 CFL/扩散数/质量漂移诊断已"
+            "记录在契约 diagnostics 中）；无独立示踪场，本指标不适用。"
+            "（INFO 不是 PASS）"))
     if missing:
         reason = (f"方程残差未运行: 缺变量 {missing}"
                   f"（需 c 才能代入 ∂c/∂t+u∂c/∂x+v∂c/∂y−κ∇²c）")
@@ -1077,6 +1836,20 @@ def run_physical_validation(
         extra="c 的 NaN/Inf 已计入 finite 指标（c_finite），本项只判负值",
         absent_status="INFO")
 
+    # ---- schema 1.2 变量系统扩展：地面/垂直坐标/湿度/降水 + 定义一致性 --------
+    metrics["sp_range"] = _range_entry(
+        synthetic, "sp",
+        th["sp_min"], th["sp_max"], th["sp_max"],
+        "地面气压范围（sp_min ≤ sp ≤ sp_max，Pa）", absent_status="INFO")
+    metrics["w_range"] = _w_entry(synthetic, th)
+    metrics["z_range"] = _z_entry(synthetic, th)
+    metrics["tp_nonneg"] = _tp_entry(synthetic, th)
+    metrics["rh_range"] = _rh_entry(synthetic, th)
+    metrics["column_consistency"] = _column_consistency_entry(synthetic, th)
+    metrics["tcwv_integral_consistency"] = _tcwv_integral_entry(synthetic, th)
+    metrics["flux_consistency"] = _flux_consistency_entry(synthetic, th)
+    metrics["mfc_consistency"] = _mfc_consistency_entry(synthetic, th)
+
     # ---- 软指标 -----------------------------------------------------------
     metrics["mass_budget"] = _mass_budget_entry(synthetic, physical_parameters, th)
     metrics["smoothness"] = _smoothness_entry(synthetic, real, th)
@@ -1121,6 +1894,9 @@ def run_physical_validation(
     notes.append("软指标期望: " + ", ".join(
         f"{k}={v:g}" for k, v in sorted(soft_th.items())))
     notes.append(f"检查变量: {sorted(str(n) for n in synthetic.data_vars)}")
+    notes.append(
+        "schema 1.2 扩展指标: "
+        + ", ".join(f"{key}={metrics[key]['status']}" for key in _SCHEMA12_METRICS))
     if real is None:
         notes.append(
             "未提供 real：smoothness 只记录生成场翻转率（INFO），"

@@ -28,6 +28,12 @@ def _physics_factory() -> type:
     return AdvectionDiffusionGenerator
 
 
+def _multifield_factory() -> type:
+    from .physics.multifield import MultifieldGenerator
+
+    return MultifieldGenerator
+
+
 def _analog_factory() -> type:
     from .analog_adapter import AnalogGenerator
 
@@ -136,6 +142,15 @@ MODELS: dict[str, ModelSpec] = {
         dependency_problems=lambda: [],
         implemented=True,
         factory=_physics_factory,
+    ),
+    "multifield": ModelSpec(
+        name="multifield",
+        mode="physics",
+        description="耦合多变量物理场（平流-扩散模式驱动：t/q/u/v/w/z/sp + 云水组分 + 降水）",
+        phase=7,
+        dependency_problems=lambda: [],
+        implemented=True,
+        factory=_multifield_factory,
     ),
     "analog_blocks": ModelSpec(
         name="analog_blocks",

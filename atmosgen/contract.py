@@ -20,7 +20,6 @@ import hashlib
 import json
 import platform
 import sys
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -29,8 +28,15 @@ import numpy as np
 import xarray as xr
 
 from . import __version__
+from .variables import (
+    VAR_SPECS,
+    VariableError,
+    VariableSpec,
+    known_variables,
+    variable_definitions,
+)
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 CONTRACT_ATTR = "atmosgen:contract"
 CONTRACT_FILENAME = "contract.json"
 
@@ -65,44 +71,13 @@ class ContractError(ValueError):
     """Raised when a dataset/contract does not satisfy the AtmosGen schema."""
 
 
-@dataclass(frozen=True)
-class VariableSpec:
-    """Canonical definition of one AtmosGen variable."""
-
-    name: str
-    dims: tuple[str, ...]
-    units: str
-    long_name: str
-    standard_name: str | None
-    category: str
-
-
-_VAR_SPECS: tuple[VariableSpec, ...] = (
-    VariableSpec("t", ("time", "level", "latitude", "longitude"), "K", "Temperature", "air_temperature", "thermodynamic"),
-    VariableSpec("q", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific humidity", "specific_humidity", "thermodynamic"),
-    VariableSpec("u", ("time", "level", "latitude", "longitude"), "m s**-1", "U component of wind", "eastward_wind", "dynamic"),
-    VariableSpec("v", ("time", "level", "latitude", "longitude"), "m s**-1", "V component of wind", "northward_wind", "dynamic"),
-    VariableSpec("clwc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific cloud liquid water content", "specific_cloud_liquid_water_content", "cloud"),
-    VariableSpec("ciwc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific cloud ice water content", "specific_cloud_ice_water_content", "cloud"),
-    VariableSpec("crwc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific rain water content", "specific_rain_water_content", "cloud"),
-    VariableSpec("cswc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific snow water content", "specific_snow_water_content", "cloud"),
-    VariableSpec("tcwv", ("time", "latitude", "longitude"), "kg m**-2", "Total column water vapour", "atmosphere_mass_content_of_water_vapor", "column"),
-    # Physics (Mode 2) passive-tracer field: schema 1.1 additive variable.
-    VariableSpec("c", ("time", "latitude", "longitude"), "1", "Tracer concentration (advection-diffusion)", None, "tracer"),
-)
-
-VAR_SPECS: dict[str, VariableSpec] = {spec.name: spec for spec in _VAR_SPECS}
-
-
+# The variable registry itself lives in ``atmosgen.variables`` (single source of
+# truth); it is re-exported here so that ``from atmosgen.contract import
+# VAR_SPECS`` keeps working for every existing caller.
+#
 # --------------------------------------------------------------------------- #
 # Small helpers
 # --------------------------------------------------------------------------- #
-def known_variables() -> list[str]:
-    """Return the canonical variable names in schema order."""
-
-    return [spec.name for spec in _VAR_SPECS]
-
-
 def spec_for(name: str) -> VariableSpec:
     """Return the ``VariableSpec`` for a canonical variable name."""
 
@@ -322,6 +297,10 @@ def build_contract(
             "created_at": utc_now_iso(),
             "env_lock": "research/env/logs/atmosgen_pip_freeze.txt",
             "notes": "",
+            # Machine-readable definition of every variable carried by the
+            # dataset: units, dims, long/standard name, provenance (primary vs
+            # derived), dependencies and the defining formula.
+            "variable_definitions": variable_definitions(variables),
         }
     )
     if metadata:
@@ -533,6 +512,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "SOURCE_KINDS",
     "VAR_SPECS",
+    "VariableError",
     "VariableSpec",
     "attach_contract",
     "build_contract",
@@ -547,6 +527,7 @@ __all__ = [
     "spec_for",
     "utc_now_iso",
     "validate_contract",
+    "variable_definitions",
     "with_sha256",
     "write_contract_file",
 ]
