@@ -161,9 +161,27 @@ PDEBench 0.1.0    requires: torch~=1.13.0       主环境: torch 2.15.0   ✗
 
 | # | 项 | 判定标准 |
 |---|---|---|
-| D1 | `atmosgen-synthcity` 环境安装 | import synthcity + `Plugin.list()` 成功 = PASS；否则记录错误并降级 |
-| D2 | synthcity TimeGAN 在小规模时序上的训练 | 训练 ≤20 min 且能 `generate()` = PASS，否则 NOT_RUN |
-| D3 | SDV 2.1.0 `sample_remaining_columns` 条件生成行为 | 单测通过 = PASS |
-| D4 | 本机 ERA5 归档子集读取耗时/内存 | 记录实际值（目标 <5 s/文件子集） |
+| D1 | `atmosgen-synthcity` 环境安装 | ✅ **PASS**（2026-11-07；需先 pin scipy==1.11.4 + opacus==1.4.1，见 §10） |
+| D2 | synthcity TimeGAN 在小规模时序上的训练 | **NOT_RUN**（时间盒只验证了 ctgan 插件集成与生成，未训练 TimeGAN；Phase 4/5 再评估） |
+| D3 | SDV 2.1.0 `sample_remaining_columns` 条件生成行为 | ⚠️ **PASS（有重要限制）**：API 可用，但连续协变量条件采样在经验分布边界退化（level=500 时 t 被压到 248.0 K ± 0.02 K），32 448 行 148 s；CTGAN/TVAE 为拒绝采样（约 6 s/行）。因此 Phase 2 改用 level_wise 方案（见 `docs/PHASE2_REPORT.md` P1） |
+| D4 | 本机 ERA5 归档子集读取耗时/内存 | ✅ **PASS**：Phase 1 ingest 16 个 239.8 MB 文件切片合计 **7.08 s / 峰值 RSS 426 MB**（含 tcwv 派生与写盘） |
 
 > 本文件将在 Phase 2 完成后更新 D1–D4 的实测结论，并把状态从 NOT_RUN 改为实际判定。
+
+
+---
+
+## 10. Synthcity 隔离环境时间盒结论（Phase 2 实测，2026-11-07）
+
+> 目的：验证 D6 决策（Synthcity 走 L2 隔离环境 + subprocess 适配）是否可行；**不**把 Synthcity 设为 Phase 2 默认生成器。
+
+| 项 | 实测 |
+|---|---|
+| 环境 | `atmosgen-synthcity`：Python 3.10.22 / numpy 1.26.4 / torch 2.2.2 / synthcity（27 个插件可见） |
+| 安装方式 | `conda create -y -n atmosgen-synthcity python=3.10` + `pip install synthcity`（约 4 分钟） |
+| 失败 1 与修复 | scipy 1.16 的 arm64 wheel 在该 macOS 上 dlopen 失败：`section '__DATA/__thread_bss' has a zero-fill section type, but offset field is not zero` → `pip install scipy==1.11.4` 后 `svds` 导入正常 |
+| 失败 2 与修复 | opacus ≥1.5 依赖 torch≥2.6 的 `nn.RMSNorm`：`AttributeError: module 'torch.nn' has no attribute 'RMSNorm'`（synthcity 又把 torch pin 在 2.2）→ `pip install opacus==1.4.1` 后 `PrivacyEngine` 导入正常 |
+| Probe 结果 | `scripts/synthcity_probe.py`：import PASS；插件列表 27；`ctgan(n_iter=5)` fit **0.63 s** + generate **0.03 s** → 200 行；`steps.fit_and_generate = PASS` |
+| 质量结论 | **NOT_RUN**：`n_iter=5` 未调参，边缘分布质量差（最大相对均值偏差 **67.2**，t 的生成 std 退化到 **5.7e-14**）——不作为模型对比依据 |
+| 判定 | D1 环境安装 **PASS**；作为生成器**不启用为默认**；Phase 4/5 若需要它作对比项，必须重新调参并单独重跑（不得沿用本次质量数字冒充可用） |
+| 证据文件 | `research/env/logs/p4_synthcity_install.log`、`p4_synthcity_probe.log`、`p4_synthcity_probe.json` |

@@ -10,15 +10,14 @@
 |---|---|---|
 | **Phase 0** | 五个第三方项目技术审查、复用矩阵、依赖兼容性、实施计划 | ✅ **已完成** |
 | **Phase 1** | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ✅ **已完成**（2026-11-07，Test A PASS，见 [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md)） |
-| Phase 2 | 统计生成（SDV）+ 统计/时序/空间评价 | ⏳ 待实施 |
+| **Phase 2** | 统计生成（SDV）+ 统计/时序/空间评价 | ✅ **已完成**（2026-11-07，Test B + E1，见 [docs/PHASE2_REPORT.md](docs/PHASE2_REPORT.md)） |
 | Phase 3 | 物理仿真（2D advection–diffusion + 解析解验证） | ⏳ 待实施 |
 | Phase 4 | 混合生成（物理基底 + 条件生成 + 物理筛检） | ⏳ 待实施 |
 | Phase 5 | Benchmark、四类质量报告、可复现性与交付 | ⏳ 待实施 |
 
-**Phase 1 已交付可运行骨架**：`pip install -e .` 后 `atmosgen --version` / `validate-config` / `ingest` / `list-models` 可用，真实 ERA5 切片已落到 `data/processed/era5_local.nc`（含契约与 Test A 报告）。
-**`generate` / `evaluate` / `report` 尚未实现**：CLI 会明确以退出码 3 报 `NOT_RUN`（Phase 2 起实现），不会产出占位数据。验收以 `docs/PHASE1_REPORT.md` 的数值证据为准。
+**Phase 1–2 已交付可运行链路**：`validate-config` / `ingest` / `list-models` / `generate` / `evaluate` / `report` 全部可用。统计生成（SDV gaussian_copula/ctgan/tvae，level_wise 方案）已在真实 ERA5 切片上产出数据并通过 Test B；实测统计边缘分布 7/8 指标 PASS，**时序/空间指标 FAIL 属计划预设（统计模型不建模时空结构，见 PHASE2_REPORT §4）**。`physics` / `hybrid` 仍按阶段报 `NOT_RUN`（退出码 3）。验收以 `docs/PHASE1_REPORT.md`、`docs/PHASE2_REPORT.md` 的数值证据为准。
 
-## 先读这六份文档
+## 先读这些文档
 
 1. [docs/THIRD_PARTY_AUDIT.md](docs/THIRD_PARTY_AUDIT.md) — 五个项目到底能不能用、许可证、API、数据源实测
 2. [docs/REUSE_MATRIX.md](docs/REUSE_MATRIX.md) — 每项能力复用谁、什么级别、不做什么
@@ -26,6 +25,8 @@
 4. [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — **实施计划（Phase 1–5 的任务、验收、测试 A–F）**
 5. [docs/DATA_SCHEMA.md](docs/DATA_SCHEMA.md) — 统一数据契约与 14 个必需元数据字段
 6. [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md) — **Phase 1 实际结果与 Test A 数值证据（含未完成项）**
+7. [docs/PHASE2_REPORT.md](docs/PHASE2_REPORT.md) — **Phase 2 实际结果（Test B/E1/偏差/NOT_RUN）**
+8. [docs/EXPERIMENT_REPORT.md](docs/EXPERIMENT_REPORT.md) — E1 三模型对比与 Synthcity 时间盒
 
 Phase 0 原始证据在 `research/`（环境探测日志、外部资料核对、五个仓库的只读浅克隆）。
 
@@ -42,11 +43,11 @@ conda create -y -n atmosgen python=3.11
 conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
-pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令（Phase 1 已可用）
-pytest -q                        # 49 个用例（Phase 1）
+pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令
+pytest -q                        # 95 个用例（Phase 1+2）
 ```
 
-版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 需要独立环境（Python 3.10 + torch 2.2.x + numpy<2），Phase 2 验证，见依赖文档。
+版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 独立环境已实测（Python 3.10 + torch 2.2.x + numpy<2，需 pin `scipy==1.11.4`、`opacus==1.4.1`），结论见 [docs/DEPENDENCY_COMPATIBILITY.md](docs/DEPENDENCY_COMPATIBILITY.md) §10。
 
 ## CLI 状态
 
@@ -55,9 +56,9 @@ atmosgen --version                                        # ✅ Phase 1
 atmosgen validate-config configs/demo.yaml                # ✅ Phase 1（结构 + 数据级校验）
 atmosgen ingest     --config configs/era5_ingest.yaml     # ✅ Phase 1（Test A）
 atmosgen list-models                                      # ✅ Phase 1
-atmosgen generate   --config configs/stat_gaussian_copula.yaml   # ⏳ Phase 2，当前 NOT_RUN（退出码 3）
-atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc   # ⏳ Phase 2
-atmosgen report     --input output/<run>/data.nc --format md                            # ⏳ Phase 2
+atmosgen generate   --config configs/stat_gaussian_copula.yaml   # ✅ Phase 2（statistical；physics/hybrid 仍 exit 3）
+atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc   # ✅ Phase 2
+atmosgen report     --input output/<run>/quality_report.json --format md               # ✅ Phase 2
 ```
 
 退出码约定：0 成功；2 配置/用法错误；3 当前阶段未实现（NOT_RUN）；4 运行期失败。

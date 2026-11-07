@@ -1,0 +1,18 @@
+# Mode 1 统计生成（深度 VAE 原理）—— E1 模型对比的第三个模型
+project: {name: stat_tvae, seed: 42, output_dir: ./output}
+
+data:
+  input: ./data/processed/era5_local.nc
+  variables: [t, q, u, v, tcwv]   # Phase 1 主数据集变量；clwc/ciwc 需与云水样本合并后再启用
+  levels: [500, 700, 850]
+  subsample: {lat_step: 1.0, lon_step: 1.0}   # 1° 抽样，控制表格规模
+
+generation:
+  mode: statistical
+  model: tvae
+  samples: {unit: cell_time, rows: 20000}
+  training: {epochs: 100, batch_size: 500}
+  covariates: [hour_sin, hour_cos, level, lat_norm, lon_norm]
+
+validation: {statistical: true, temporal: true, spatial: true, physical: true}
+output: {format: netcdf, directory: ./output}

@@ -1,0 +1,90 @@
+=== synthcity probe: Sat Nov  7 18:47:18 CST 2026
+[transformers] Disabling PyTorch because PyTorch >= 2.6 is required but found 2.2.2
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+{
+  "status": "FAIL",
+  "steps": {},
+  "error": "AttributeError: module 'torch.nn' has no attribute 'RMSNorm'",
+  "traceback": "Traceback (most recent call last):\n  File \"/Users/apple/Desktop/Atmospheric Data Generation/scripts/synthcity_probe.py\", line 42, in main\n    from synthcity.plugins import Plugins\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/plugins/__init__.py\", line 9, in <module>\n    from synthcity.plugins.core.plugin import Plugin, PluginLoader  # noqa: F401,E402\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/plugins/core/plugin.py\", line 16, in <module>\n    from synthcity.metrics.plots import plot_marginal_comparison, plot_tsne\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/metrics/__init__.py\", line 2, in <module>\n    from .eval import Metrics  # noqa: F401\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/metrics/eval.py\", line 10, in <module>\n    from synthcity.plugins.core.dataloader import (\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/plugins/core/dataloader.py\", line 22, in <module>\n    from synthcity.utils.serialization import dataframe_hash\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/utils/serialization.py\", line 9, in <module>\n    from opacus import PrivacyEngine\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/opacus/__init__.py\", line 17, in <module>\n    from .grad_sample import GradSampleModule, GradSampleModuleFastGradientClipping\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/opacus/grad_sample/__init__.py\", line 32, in <module>\n    from .rms_norm import compute_rms_norm_grad_sample  # noqa\n  File \"/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/opacus/grad_sample/rms_norm.py\", line 27, in <module>\n    @register_grad_sampler(nn.RMSNorm)\nAttributeError: module 'torch.nn' has no attribute 'RMSNorm'\n",
+  "elapsed_seconds": 33.19
+}
+EXIT=1
+=== synthcity probe attempt 2: Sat Nov  7 18:50:30 CST 2026
+[transformers] Disabling PyTorch because PyTorch >= 2.6 is required but found 2.2.2
+[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.
+[2026-11-07T18:51:05.219428+0800][25613][CRITICAL] Error importing TabularGoggle: No module named 'dgl'
+[2026-11-07T18:51:05.221519+0800][25613][CRITICAL] module disabled: /opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/plugins/generic/plugin_goggle.py
+[2026-11-07T18:51:19.165328+0800][25613][CRITICAL] module disabled: /opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity/plugins/generic/plugin_goggle.py
+[KeOps] Warning : CUDA libraries not found or could not be loaded; Switching to CPU only.
+  0%|          | 0/5 [00:00<?, ?it/s] 20%|██        | 1/5 [00:00<00:00,  9.93it/s]100%|██████████| 5/5 [00:00<00:00, 26.71it/s]100%|██████████| 5/5 [00:00<00:00, 24.21it/s]
+{
+  "status": "PASS",
+  "steps": {
+    "import": "PASS",
+    "plugin_list": "PASS",
+    "fit_and_generate": "PASS"
+  },
+  "versions": {
+    "python": "3.10.22",
+    "numpy": "1.26.4",
+    "torch": "2.2.2",
+    "synthcity": "unknown",
+    "synthcity_path": "/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity"
+  },
+  "plugin_count": 27,
+  "plugins_sample": [
+    "radialgan",
+    "rtvae",
+    "dummy_sampler",
+    "nflow",
+    "adsgan",
+    "great",
+    "marginal_distributions",
+    "dpgan",
+    "arf",
+    "survae",
+    "privbayes",
+    "survival_ctgan",
+    "uniform_sampler",
+    "decaf",
+    "pategan"
+  ],
+  "fit_seconds": 0.63,
+  "sample_seconds": 0.03,
+  "generated_rows": 200,
+  "marginals": {
+    "t": {
+      "real_mean": 263.49074173567305,
+      "gen_mean": 274.9302483947303,
+      "real_std": 7.552707668135097,
+      "gen_std": 5.698606254521627e-14
+    },
+    "q": {
+      "real_mean": 0.0005217445292785857,
+      "gen_mean": 0.00048189742512539437,
+      "real_std": 0.00028862034034436484,
+      "gen_std": 0.0002770081188099269
+    },
+    "u": {
+      "real_mean": 0.29390054281316064,
+      "gen_mean": -9.902011700228487,
+      "real_std": 5.381852780258511,
+      "gen_std": 1.7808144545380086e-15
+    },
+    "v": {
+      "real_mean": -0.14146625012325167,
+      "gen_mean": 9.365453787034749,
+      "real_std": 5.8119865676609965,
+      "gen_std": 0.5754493915434306
+    },
+    "tcwv": {
+      "real_mean": 30.621431119850566,
+      "gen_mean": 49.51519618504952,
+      "real_std": 10.912242702645738,
+      "gen_std": 1.0128633978191381
+    }
+  },
+  "max_relative_mean_difference": 67.2027,
+  "elapsed_seconds": 48.7
+}
+EXIT=0

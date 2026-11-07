@@ -1,0 +1,70 @@
+{
+  "status": "PASS",
+  "steps": {
+    "import": "PASS",
+    "plugin_list": "PASS",
+    "fit_and_generate": "PASS"
+  },
+  "versions": {
+    "python": "3.10.22",
+    "numpy": "1.26.4",
+    "torch": "2.2.2",
+    "synthcity": "unknown",
+    "synthcity_path": "/opt/miniconda3/envs/atmosgen-synthcity/lib/python3.10/site-packages/synthcity"
+  },
+  "plugin_count": 27,
+  "plugins_sample": [
+    "radialgan",
+    "rtvae",
+    "dummy_sampler",
+    "nflow",
+    "adsgan",
+    "great",
+    "marginal_distributions",
+    "dpgan",
+    "arf",
+    "survae",
+    "privbayes",
+    "survival_ctgan",
+    "uniform_sampler",
+    "decaf",
+    "pategan"
+  ],
+  "fit_seconds": 0.63,
+  "sample_seconds": 0.03,
+  "generated_rows": 200,
+  "marginals": {
+    "t": {
+      "real_mean": 263.49074173567305,
+      "gen_mean": 274.9302483947303,
+      "real_std": 7.552707668135097,
+      "gen_std": 5.698606254521627e-14
+    },
+    "q": {
+      "real_mean": 0.0005217445292785857,
+      "gen_mean": 0.00048189742512539437,
+      "real_std": 0.00028862034034436484,
+      "gen_std": 0.0002770081188099269
+    },
+    "u": {
+      "real_mean": 0.29390054281316064,
+      "gen_mean": -9.902011700228487,
+      "real_std": 5.381852780258511,
+      "gen_std": 1.7808144545380086e-15
+    },
+    "v": {
+      "real_mean": -0.14146625012325167,
+      "gen_mean": 9.365453787034749,
+      "real_std": 5.8119865676609965,
+      "gen_std": 0.5754493915434306
+    },
+    "tcwv": {
+      "real_mean": 30.621431119850566,
+      "gen_mean": 49.51519618504952,
+      "real_std": 10.912242702645738,
+      "gen_std": 1.0128633978191381
+    }
+  },
+  "max_relative_mean_difference": 67.2027,
+  "elapsed_seconds": 48.7
+}

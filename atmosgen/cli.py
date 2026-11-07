@@ -157,7 +157,10 @@ def command_list_models() -> None:
         deps = "ok" if row["dependencies_available"] else "missing"
         typer.echo(f"{row['name']:<22}{row['mode']:<12}{row['phase']:<7}{deps:<10}{row['status']}")
     typer.echo("")
-    typer.echo("说明：Phase 1 只注册模型与接口；适配器在 Phase 2（SDV）/ Phase 3（物理）/ Phase 4（混合）实现。")
+    typer.echo(
+        "说明：Phase 2 已实现 statistical 三模型（SDV，level_wise 方案）；"
+        "physics（Phase 3）/ hybrid（Phase 4）仍为 NOT_RUN。"
+    )
 
 
 @app.command("generate")
