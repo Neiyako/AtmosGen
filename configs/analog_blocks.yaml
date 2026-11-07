@@ -1,0 +1,25 @@
+# 结构保持型合成（真实场时序块 × 空间块重组）
+# 目的：保留时空结构与物理一致性，使导数型下游量（如水汽通量辐合 MFC、
+#       云水资源量）仍然有意义；输出是真实场的重组而非独立样本，
+#       契约中以 independence=recombined 与 novelty.exact_copy_cell_fraction 披露。
+project: {name: analog_blocks, seed: 42, output_dir: ./output}
+
+data:
+  input: ./data/processed/era5_local.nc
+  variables: [t, q, u, v, tcwv]
+  levels: [500, 700, 850]
+  subsample: {lat_step: 1.0, lon_step: 1.0}
+
+generation:
+  mode: statistical
+  model: analog_blocks
+  samples: {unit: cell_time, rows: 32448}
+  structure:
+    block_steps: 4        # 连续时次块长度（保留过程持续性）
+    patch_cells: 8        # 空间块边长（格点）
+    patch_mode: whole_field  # whole_field=整域取源（唯一能保住导数型量：实测 MFC 图案 r=0.89，
+                              #   而 block/mosaic 只有 0.00~0.14）；block/mosaic 更"新颖"但破坏大尺度结构
+    noise_jitter: 0.0     # 0=纯重组；>0 注入相对量级抖动以降低逐位重复
+
+validation: {statistical: true, temporal: true, spatial: true, physical: true}
+output: {format: netcdf, directory: ./output}

@@ -20,12 +20,14 @@ def test_registry_contains_all_planned_models():
         "ctgan",
         "tvae",
         "advection_diffusion",
+        "analog_blocks",
         "hybrid",
     }
     assert [spec.name for spec in list_models("statistical")] == [
         "gaussian_copula",
         "ctgan",
         "tvae",
+        "analog_blocks",
     ]
     assert [spec.name for spec in list_models("physics")] == ["advection_diffusion"]
 
@@ -50,7 +52,14 @@ def test_registry_report_phase_status():
     assert all(entry["phase"] >= 2 for entry in report)
     by_name = {entry["name"]: entry for entry in report}
     # Phases 2–4 are all implemented now; no NOT_RUN model remains
-    for name in ("gaussian_copula", "ctgan", "tvae", "advection_diffusion", "hybrid"):
+    for name in (
+        "gaussian_copula",
+        "ctgan",
+        "tvae",
+        "advection_diffusion",
+        "analog_blocks",
+        "hybrid",
+    ):
         assert by_name[name]["implemented"] is True, name
 
 

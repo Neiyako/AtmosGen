@@ -28,6 +28,12 @@ def _physics_factory() -> type:
     return AdvectionDiffusionGenerator
 
 
+def _analog_factory() -> type:
+    from .analog_adapter import AnalogGenerator
+
+    return AnalogGenerator
+
+
 def _hybrid_factory() -> type:
     from .hybrid_adapter import HybridGenerator
 
@@ -130,6 +136,15 @@ MODELS: dict[str, ModelSpec] = {
         dependency_problems=lambda: [],
         implemented=True,
         factory=_physics_factory,
+    ),
+    "analog_blocks": ModelSpec(
+        name="analog_blocks",
+        mode="statistical",
+        description="结构保持型合成（真实场时序块 × 空间块重组；保留时空结构与物理一致性）",
+        phase=6,
+        dependency_problems=lambda: [],
+        implemented=True,
+        factory=_analog_factory,
     ),
     "hybrid": ModelSpec(
         name="hybrid",

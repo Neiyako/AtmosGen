@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+- **新增结构保持型合成模式 `analog_blocks`**（Phase 6）：真实场时序块 × 整域重组，
+  保住导数型量（水汽通量辐合 MFC 图案相关 0.002 → **0.894**、空间图案 0.009 → 0.739、
+  lag-1 ACF −0.260 → +0.708、饱和违例 3.29% → 0.00%），边缘统计保持（KS(t) 0.024）；
+  契约新增 `generation_config.independence="recombined"` 与 `novelty.exact_copy_cell_fraction`
+  如实披露"输出为真实场重组、非独立样本"。详见 `docs/PHASE6_REPORT.md`。
+- 新增 `configs/analog_blocks.yaml`（`patch_mode=whole_field` 为保导数型量的唯一可用取源方式）。
 - 新增 `scripts/quality_fidelity.py`：合成数据保真度诊断（边缘 KS / 时序相关 / 空间图案相关 /
   lag-1 ACF / 饱和违例率，以及**导数型量** MFC 的图案相关与幅度比），面向云水资源量等下游计算的可用性评估。
 - 新增 `docs/DATA_QUALITY_FOR_CLOUD_WATER.md`：合成数据在云水资源量计算中的可用性边界（机理 + 实测 + 改造路线）。

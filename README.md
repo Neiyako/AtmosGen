@@ -52,6 +52,7 @@
 | 统一数据契约 | 14 个必需字段、schema 1.0 → 1.1（新增物理追迹量 `c`）、维度/单位/坐标类型校验 | ✅ |
 | 真实数据 ingest | 本机 ERA5 归档 → 规范 NetCDF（派生 `tcwv`）、**只读断言**、Test A 报告 | ✅ |
 | Mode 1 统计生成 | SDV `gaussian_copula` / `ctgan` / `tvae`，level-wise 方案，条件生成钩子 | ✅ |
+| Mode 1' **结构保持型合成** | `analog_blocks`：真实场时序块 × 整域重组，**保住导数型量**（MFC 图案 r 0.89 vs 统计模式 0.00），物理违例 0 | ✅ |
 | Mode 2 物理仿真 | 自研 2D advection–diffusion（显式 Euler + 迎风 + 中心扩散），3 种初值 / 3 种边界 | ✅ |
 | Mode 3 混合生成 | 物理基底 → 条件生成 → 硬约束筛检 → `rejected.jsonl` | ✅ |
 | 四类质量验证 | statistical / temporal / spatial / physical，统一返回结构 + 阈值覆盖 + 状态聚合 | ✅ |
@@ -138,6 +139,15 @@ output/<mode>_<model>_<YYYYmmdd-HHMMSS>_<seed>/
 - 边界：`periodic`（环绕）/ `open`（零梯度）/ `fixed_from_real`（边缘固定）
 - 稳定性**双层强制**：CFL、单轴 `C+2r≤1`、**联合 `(Cx+Cy)+2(Rx+Ry)≤1`**、扩散和 `≤0.5`；
   违规直接报错，不静默降步长
+
+### Mode 1' · 结构保持型合成（`analog_blocks`）
+
+单表统计模型能保住**边缘分布**，但保不住**时空结构**：对独立采样的场求散度（云水资源量的核心量
+`MFC = -∇·(q·V)`）会把噪声放大到与信号同量级——实测 MFC 图案相关 0.002 而幅度比 0.885
+（"量级像、逐格全错"）。`analog_blocks` 改为**重组真实结构**：连续时序块按计划重排 + 整域取源，
+实测 MFC 图案相关 **0.894**、空间图案 0.739、lag-1 ACF 0.708、饱和违例 0%。
+输出是真实场的重组而非独立样本，契约以 `independence=recombined` 与
+`novelty.exact_copy_cell_fraction` **如实披露**。
 
 ### Mode 3 · 混合生成（物理基底 + 条件生成 + 筛检）
 
@@ -292,6 +302,7 @@ research/    # Phase 0 证据（环境探测、外部资料核对）
 | [`docs/VALIDATION_GUIDE.md`](docs/VALIDATION_GUIDE.md) | 四类指标/阈值/状态语义、报告解读、已知限制 |
 | [`docs/EXPERIMENT_REPORT.md`](docs/EXPERIMENT_REPORT.md) | E1/E2/E3 实验、Test D/E/F |
 | [`docs/DATA_QUALITY_FOR_CLOUD_WATER.md`](docs/DATA_QUALITY_FOR_CLOUD_WATER.md) | 合成数据在**云水资源量**等导数型下游计算中的可用性边界（含 MFC 实测） |
+| [`docs/PHASE6_REPORT.md`](docs/PHASE6_REPORT.md) | 结构保持型合成（`analog_blocks`）：把导数型量从不可用提升到可用的实测对照 |
 | [`docs/DATA_SCHEMA.md`](docs/DATA_SCHEMA.md) | 统一数据契约与文件布局 |
 | [`docs/THIRD_PARTY_AUDIT.md`](docs/THIRD_PARTY_AUDIT.md) / [`docs/REUSE_MATRIX.md`](docs/REUSE_MATRIX.md) | 五个候选项目的技术审查与复用边界 |
 | [`docs/DEPENDENCY_COMPATIBILITY.md`](docs/DEPENDENCY_COMPATIBILITY.md) | 本机依赖实测、Synthcity 时间盒结论 |
