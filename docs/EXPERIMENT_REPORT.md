@@ -53,29 +53,32 @@
 
 ## E3 真实 / 统计 / 物理 / 混合 四组对比
 
+> 下表取修复后重跑（`output/experiments_e3/summary.json`，HEAD 含 F1–F4 修复前的 run 时间轴修正）；E1 表取 `output/experiments/summary.json`。
+
 | 组 | 生成耗时 | statistical | temporal | spatial | physical |
 |---|---|---|---|---|---|
 | 真实参考（`era5_local.nc`） | — | 基准 | 基准 | 基准 | 基准 |
-| statistical（copula） | 14.8 s | FAIL（7/8 指标 PASS） | FAIL | FAIL | FAIL（饱和违例 1066） |
-| physics（advection–diffusion） | 7.3 s | NOT_RUN（无可比变量/时轴） | NOT_RUN | NOT_RUN | **PASS**（质量守恒 1.4e-16） |
-| hybrid（物理基底 + 条件生成） | 680 s | FAIL（条件化代价，见下） | FAIL | FAIL | 见 E3 重跑（筛检后 0 违例） |
+| statistical（copula） | 6.08 s | FAIL（7/8 指标 PASS） | FAIL | FAIL | FAIL（饱和违例 1066） |
+| physics（advection–diffusion） | 3.21 s | NOT_RUN（无可比变量/时轴） | NOT_RUN | NOT_RUN | **PASS**（质量守恒 1.4e-16） |
+| hybrid（物理基底 + 条件生成） | 943.28 s | FAIL（条件化代价，见下） | FAIL | FAIL | NOT_RUN（equation_residual 不可算；finite/saturation/mass 均 PASS） |
 
 关键指标：
 
 | 指标 | statistical | hybrid |
 |---|---|---|
 | KS vs real ↓ | **0.0871** | 0.2501 |
-| column_shapes ↑ | **0.9530** | 0.7499 |
+| column_shapes ↑ | **0.9530** | 0.8815 |
 | temporal.diff_var_ratio ↓ | 338.17 | **163.91** |
 | spatial.variogram_ratio ↓ | 16.57 | **9.74** |
 | spatial.gradient_rms_ratio ↓ | 6.86 | **4.60** |
 | physical.saturation（违例数） | 1066 | 0（筛检后；筛除 653，拒绝率 **2.01%**） |
+| physical 模块状态 | FAIL | NOT_RUN（硬约束全 PASS；equation_residual 对多层风场不适用） |
 
 **解读（不预设结论）**：
 
 1. 统计模式边缘分布最好（KS 0.087），但**物理不一致**（3.3% 超饱和）且无时空结构。
 2. 物理模式物理自洽（质量守恒、无负值/非有限），但输出是示踪浓度，与气象要素不可直接比 → 三类对照 NOT_RUN，不造假指标。
-3. 混合模式以物理基底替换 tcwv 后：**时空指标有可测改善**（`diff_var_ratio` 338→164、`variogram_ratio` 16.6→9.7、`gradient_rms_ratio` 6.9→4.6），物理违例经筛检归零；但**边缘统计变差**（KS 0.087→0.25、shapes 0.953→0.750）——条件化改变剩余变量边缘分布，物理基底的 tcwv 分布（扩散平滑）与真实不同。这是真实权衡，不是缺陷。
+3. 混合模式以物理基底替换 tcwv 后：**时空指标有可测改善**（`diff_var_ratio` 338→164、`variogram_ratio` 16.6→9.7、`gradient_rms_ratio` 6.9→4.6），物理违例经筛检归零；但**边缘统计变差**（KS 0.087→0.25、shapes 0.953→0.882）——条件化改变剩余变量边缘分布，物理基底的 tcwv 分布（扩散平滑）与真实不同。这是真实权衡，不是缺陷。
 4. 不存在"最好模式"的普适结论：边缘一致性用 Mode 1，物理一致用 Mode 2/混合，时空结构用混合（待改进）。
 
 ## Test D 质量报告
@@ -88,7 +91,7 @@
 
 | 检查 | 结果 |
 |---|---|
-| 两次 run 目录 | `statistical_gaussian_copula_20261107-220750_42` / `…-220759_42` |
+| 两次 run 目录 | 同配置两次生成到不同 `output_dir`（`output/_repro_a/…` 与 `output/_repro_b/…`） |
 | 数据数值一致性 | **逐位相同**（t/q/u/v/tcwv 的 max\|diff\| = 0） |
 | 说明 | 文件 SHA 不同（契约 `created_at` 等元数据变化），但**数据与指标一致**，强于计划 §8 "≤1%" 的要求 |
 

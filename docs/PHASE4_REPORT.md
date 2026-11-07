@@ -28,7 +28,7 @@
 | 网格 / 时次 | 26×26 @1°（与真实 1° 子网格逐点对齐）、16 时次（索引式映射，见偏差 P2） |
 | 总样本（cell_time） | 32 448 |
 | 筛检前拒绝 | **653（2.01%）**，原因分布：`supersaturated` 653（无其他违例） |
-| 筛检后重新校验 | 0 违例（31 795 通过单元） |
+| 筛检后重新校验 | 0 违例（31 795 通过单元）；evaluate 的 physical 模块因 `equation_residual` 对多层风场不适用而整体 NOT_RUN，但 finite/saturation/mass_budget 三项均 PASS |
 | 物理基底 mass 漂移 | 2.9e-16（周期边界，求解器诊断） |
 | 数据变量 | t/q/u/v（4D）+ tcwv（3D，物理基底，符合 schema） |
 

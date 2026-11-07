@@ -8,7 +8,7 @@
 
 ## 1. 一句话结果
 
-`atmosgen generate --config configs/stat_gaussian_copula.yaml` 在 **1.95 s 拟合 + 0.235 s 采样**内产出 `output/statistical_gaussian_copula_20261107-183504_42/data.nc`（16 时次 × 3 层 × 26×26，32 448 行 → 完整场，契约 14 字段齐全）；`atmosgen evaluate --real data/processed/era5_local.nc` 给出 8 项统计指标中 **7 项 PASS**（仅跨层相关 `corr_frobenius` FAIL）、时序与空间指标 FAIL（计划 §4.1/X2 预设）。同一链路跑通 CTGAN（137 s）与 TVAE（63 s）。`pytest -q` **95 passed**。
+`atmosgen generate --config configs/stat_gaussian_copula.yaml` 在 **1.95 s 拟合 + 0.235 s 采样**内产出 `output/statistical_gaussian_copula_20261107-183504_42/data.nc`（16 时次 × 3 层 × 26×26，32 448 行 → 完整场，契约 14 字段齐全）；`atmosgen evaluate --real data/processed/era5_local.nc` 给出 8 项统计指标中 **7 项 PASS**（仅跨层相关 `corr_frobenius` FAIL）、时序与空间指标 FAIL（计划 §4.1/X2 预设）。同一链路跑通 CTGAN（137 s）与 TVAE（63 s）。`pytest -q` **96 passed**（Phase 2 时点；Phase 5 终态 140）。
 
 ## 2. Phase 2 验收表（对照计划 §7）
 

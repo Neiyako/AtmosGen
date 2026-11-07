@@ -59,8 +59,17 @@ def _run(cmd: list[str], *, cwd: Path = REPO_ROOT) -> dict[str, Any]:
 
 
 def _latest_run(prefix: str, output_root: Path) -> Path | None:
-    candidates = sorted(output_root.glob(f"{prefix}*"))
-    return candidates[-1] if candidates else None
+    """Newest *complete* run dir (has data.nc) — name sorting breaks as soon as
+    interrupted or pytest leftovers exist."""
+
+    candidates = [
+        path
+        for path in output_root.glob(f"{prefix}*")
+        if path.is_dir() and (path / "data.nc").exists()
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def _quality_report(run_dir: Path) -> dict[str, Any] | None:

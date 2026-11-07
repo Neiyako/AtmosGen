@@ -214,6 +214,7 @@ def _finite_entry(ds) -> dict[str, Any]:
     # corrupt values, so NaN is tolerated while Inf always counts as bad.
     screening = ds.attrs.get("atmosgen_screening") or {}
     masked_allowed = bool(screening.get("mask_applied")) if isinstance(screening, Mapping) else False
+    masked_declared_rate: float | None = None
     if not masked_allowed:
         # the embedded contract carries the screening declaration (dataset attrs
         # starting with "atmosgen" are stripped by attach_contract)
@@ -228,6 +229,10 @@ def _finite_entry(ds) -> dict[str, Any]:
                 block = quality.get(key) or {}
                 if isinstance(block, Mapping) and block.get("mask_applied"):
                     masked_allowed = True
+                    try:
+                        masked_declared_rate = float(block.get("rejection_rate", 0.0))
+                    except (TypeError, ValueError):
+                        masked_declared_rate = 0.0
                     break
     masked = 0
     for name in names:
@@ -251,7 +256,26 @@ def _finite_entry(ds) -> dict[str, Any]:
                         f"变量 dtype 非数值，有限性无法验证: {_short(unverified)}")
     detail = f"data_vars={len(names)}, elements={total}, bad={bad}"
     if masked_allowed:
-        detail += f"; 筛检遮罩 NaN {masked} 个（已声明 atmosgen_screening.mask_applied）"
+        detail += (
+            f"; 筛检遮罩 NaN {masked} 个（契约声明 mask_applied，"
+            f"声明拒绝率 {(masked_declared_rate or 0.0):.4f}）"
+        )
+        # A dataset must not be able to launder arbitrary missing values: the
+        # masked fraction is bounded by the declared screening rejection rate
+        # (with a small tolerance for multi-variable masking), capped at 50%.
+        observed_rate = (masked / total) if total else 0.0
+        declared = masked_declared_rate if masked_declared_rate is not None else 0.0
+        allowed_rate = min(0.5, declared * 1.5 + 0.01)
+        if observed_rate > allowed_rate:
+            return _metric(
+                bad,
+                0.0,
+                "max",
+                "FAIL",
+                detail
+                + f"; 遮罩比例 {observed_rate:.2%} 超过声明拒绝率允许上限 {allowed_rate:.2%}"
+                "（不允许用遮罩声明掩盖任意 NaN）",
+            )
     if per:
         detail += "; 逐变量坏值: " + _short(per)
     if "c" in ds.data_vars:
@@ -841,6 +865,11 @@ def _equation_residual_entry(ds, pp: Mapping[str, Any] | None) -> dict[str, Any]
     pp_block = pp if isinstance(pp, Mapping) else {}
     constant_u = pp_block.get("u0")
     constant_v = pp_block.get("v0")
+    # NOTE: the residual is implemented for a single-layer 2-D wind field and a
+    # single advected scalar `c` (Mode 2). Multi-level datasets (hybrid/statistical
+    # with 4-D winds) are reported NOT_RUN rather than approximated silently —
+    # the per-level residual form is a documented Phase 4+ limitation.
+    advected_name = "c"
     missing = [n for n in ("c",) if n not in ds.data_vars]
     if missing:
         reason = (f"方程残差未运行: 缺变量 {missing}"

@@ -140,7 +140,7 @@ FAIL  >  NOT_RUN  >  CONDITIONAL_PASS  >  PASS
   所需输入存在但无法计算（level 单位不可识别、形状不一致、全 NaN）→ NOT_RUN 且**参与聚合**（会让整体至少为 NOT_RUN）。
 - 核心状态变量（t/q/u/v/c）全部缺失的数据集 → physical 整体 NOT_RUN（不因剩余可算指标而误判 PASS）。
 
-**筛检遮罩**：Mode 3 输出中被物理筛检拒绝的单元以 NaN 保存，同时在 `atmosgen_screening.mask_applied=true` 中声明；
+**筛检遮罩**：Mode 3 输出中被物理筛检拒绝的单元以 NaN 保存，同时在 嵌入契约 `quality_metrics.screening.mask_applied=true` 中声明；
 此时 `finite` 允许 NaN（计为"筛检遮罩"），但 Inf 永远算坏值。未声明遮罩的数据集出现 NaN → `finite` FAIL。
 
 ---
@@ -198,4 +198,4 @@ validation:
 7. **时空指标抽样**：temporal ≤200 条序列、spatial ≤50 个场，固定种子；极端局部异常可能被抽样遗漏。
 8. **整体 FAIL 不等于"全部指标失败"**：例如统计模式 `statistical` 7/8 指标 PASS 时，仅 `corr_frobenius`（跨层相关）FAIL
    即导致模块 FAIL——这是计划 §5.5 的聚合口径，读报告时请同时看逐指标状态。
-9. **NaN 遮罩语义**只在声明 `atmosgen_screening.mask_applied` 时成立；手工注入 NaN 仍按缺失/坏值处理。
+9. **NaN 遮罩语义**只在声明 嵌入契约 `quality_metrics.screening.mask_applied` 时成立；手工注入 NaN 仍按缺失/坏值处理。

@@ -270,16 +270,20 @@ class HybridGenerator(BaseGenerator):
             base_flat.reshape(n_time, n_lat, n_lon).astype(float),
         )
 
-        # coordinates per flattened cell (row order: level, time, lat, lon)
-        level_axis_values = np.asarray(combined["__level__"].values, dtype=float)
+        # coordinates per flattened cell: `combined` rows are LEVEL-major
+        # (level, time, lat, lon) and the time labels must be the ones written
+        # into data.nc (real timestamps when the index mapping is applied) —
+        # otherwise rejected.jsonl becomes unjoinable with the dataset.
+        dataset_times = np.asarray(dataset["time"].values)
         self._coordinate_rows = {
-            "time": np.repeat(np.asarray(base["time"].values), len(levels) * n_lat * n_lon),
-            "level": np.repeat(level_axis_values, n_lat * n_lon),
+            "time": np.repeat(np.tile(dataset_times, len(levels)), n_lat * n_lon),
+            "level": np.repeat(np.asarray(levels, dtype=float), n_time * n_lat * n_lon),
             "latitude": np.tile(
-                np.repeat(np.asarray(base["latitude"].values), n_lon), len(levels) * n_time
+                np.repeat(np.asarray(dataset["latitude"].values), n_lon),
+                len(levels) * n_time,
             ),
             "longitude": np.tile(
-                np.asarray(base["longitude"].values), len(levels) * n_time * n_lat
+                np.asarray(dataset["longitude"].values), len(levels) * n_time * n_lat
             ),
         }
         reasons_by_row: dict[int, set[str]] = {}

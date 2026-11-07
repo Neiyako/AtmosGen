@@ -223,6 +223,51 @@ def test_hybrid_generator_end_to_end(tmp_path):
     assert "row" in first
 
 
+def test_conditional_generation_rejects_nan_rewrite():
+    """F3: a synthesizer that turns the known column into NaN must be rejected."""
+
+    class NaNReturning:
+        def sample_remaining_columns(self, known, batch_size=None):
+            return {"atmosgen": pd.DataFrame(
+                {
+                    "t": [280.0] * len(known),
+                    "q": [1e-3] * len(known),
+                    "u": [1.0] * len(known),
+                    "v": [1.0] * len(known),
+                    "tcwv": [np.nan] * len(known),
+                }
+            )}
+
+    with pytest.raises(HybridError):
+        conditional_generate(
+            NaNReturning(), known_column="tcwv", known_values=[20.0, 21.0]
+        )
+    # a NaN base must be refused up front as well (cannot be conditioned on)
+    with pytest.raises(HybridError):
+        conditional_generate(
+            NaNReturning(), known_column="tcwv", known_values=[np.nan]
+        )
+
+
+def test_rejected_log_coordinates_match_dataset_time(tmp_path):
+    """F1: rejected.jsonl must use the time labels written into data.nc."""
+
+    from atmosgen.generators.hybrid_adapter import HybridGenerator
+    import json
+
+    config = _config(tmp_path)
+    generator = HybridGenerator(config, seed=42)
+    generator.fit(_real_dataset())
+    result = generator.sample()
+    dataset = result.dataset
+    log = generator.write_rejected(tmp_path / "rejected.jsonl")
+    lines = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line]
+    dataset_times = {str(value) for value in np.asarray(dataset["time"].values)}
+    for entry in lines:
+        assert str(entry["time"]) in dataset_times, (entry["time"], sorted(dataset_times)[:3])
+        assert float(entry["level"]) in set(float(v) for v in dataset["level"].values)
+
+
 def test_hybrid_requires_real_data(tmp_path):
     from atmosgen.generators.hybrid_adapter import HybridGenerator
 

@@ -86,7 +86,7 @@ def test_generate_hybrid_requires_real_data_exists(tmp_path):
     config.write_text(
         "\n".join(
             [
-                "project: {name: hybrid_cli, seed: 1}",
+                f"project: {{name: hybrid_cli, seed: 1, output_dir: {tmp_path / 'output'}}}",
                 "data: {input: ./nope.nc, variables: [t, q, u, v, tcwv]}",
                 "generation: {mode: hybrid, model: hybrid, samples: {unit: field, fields: 5}}",
                 "physics:",

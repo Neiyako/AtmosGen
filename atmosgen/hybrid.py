@@ -212,6 +212,11 @@ def conditional_generate(
     known = pd.DataFrame({known_column: np.asarray(known_values, dtype=float)})
     if len(known) == 0:
         raise HybridError("条件生成需要至少一个已知值")
+    if not np.all(np.isfinite(known[known_column].values)):
+        raise HybridError(
+            f"已知列 {known_column!r} 含 NaN/Inf：物理基底必须是有限值，"
+            "请先修复物理场（NaN 基底无法作为条件）"
+        )
     frame = synthesizer.sample_remaining_columns(known, batch_size=min(batch_size, len(known)))
     if isinstance(frame, Mapping):
         frame = frame[next(iter(frame))]
@@ -219,14 +224,16 @@ def conditional_generate(
         raise HybridError(f"条件采样返回 {type(frame).__name__}，期望 pandas.DataFrame")
     if known_column not in frame.columns:
         raise HybridError(f"条件采样结果缺少 known 列 {known_column!r}")
-    difference = np.abs(
-        np.asarray(frame[known_column].values, dtype=float)
-        - np.asarray(known[known_column].values, dtype=float)
-    )
-    if difference.size and float(np.nanmax(difference)) > 0:
+    sampled_known = np.asarray(frame[known_column].values, dtype=float)
+    expected_known = np.asarray(known[known_column].values, dtype=float)
+    if not np.array_equal(sampled_known, expected_known):
+        # array_equal also catches NaN-vs-value rewrites, which a nanmax-based
+        # comparison silently ignores
+        difference = np.abs(sampled_known - expected_known)
+        worst = float(np.nanmax(difference)) if np.isfinite(difference).any() else float("nan")
         raise HybridError(
             f"条件采样未原样保留 known 列 {known_column!r}"
-            f"（最大偏差 {float(np.nanmax(difference)):.3g}）——混合模式不得改写物理基底"
+            f"（最大偏差 {worst:.3g}）——混合模式不得改写物理基底"
         )
     return frame
 

@@ -19,6 +19,7 @@ import pytest
 import xarray as xr
 from scipy.ndimage import gaussian_filter
 
+import atmosgen.validation.physical as physical_module
 from atmosgen.validation.physical import (
     DEFAULT_THRESHOLDS,
     run_physical_validation,
@@ -483,3 +484,68 @@ def test_empty_dataset_is_not_run_not_pass():
     assert out["metrics"]["finite"]["status"] == "NOT_RUN"
     assert out["status"] == "NOT_RUN"
     assert all(m["status"] in {"NOT_RUN", "INFO"} for m in out["metrics"].values())
+
+
+def test_masked_nan_fraction_is_bounded_by_declared_rejection_rate():
+    """F2: a dataset cannot launder arbitrary NaN by claiming a screening mask."""
+
+    import json as _json
+
+    def _ds(nan_count: int) -> xr.Dataset:
+        n = 20
+        values = np.full((2, 2, 2, n), 280.0)
+        values.reshape(-1)[:nan_count] = np.nan
+        ds = xr.Dataset(
+            {
+                "t": (("time", "level", "latitude", "longitude"), values, {"units": "K"}),
+                "q": (
+                    ("time", "level", "latitude", "longitude"),
+                    np.full((2, 2, 2, n), 1e-3),
+                    {"units": "kg kg**-1"},
+                ),
+            },
+            coords={
+                "time": np.array(["2020-01-01T00", "2020-01-01T06"], dtype="datetime64[ns]"),
+                "level": (("level",), [500.0, 700.0], {"units": "hPa"}),
+                "latitude": (("latitude",), [20.0, 30.0], {"units": "degrees_north"}),
+                "longitude": (("longitude",), np.linspace(100.0, 120.0, n), {"units": "degrees_east"}),
+            },
+        )
+        contract = {
+            "schema_version": "1.1",
+            "atmosgen_version": "0.1.0",
+            "variables": ["t", "q"],
+            "coordinates": {
+                "time": {"name": "time", "units": "h", "calendar": "proleptic_gregorian",
+                         "range": ["2020-01-01T00", "2020-01-01T06"], "step_hours": 6.0},
+                "level": {"name": "level", "type": "pressure_level", "units": "hPa", "values": [500, 700]},
+                "latitude": {"name": "latitude", "units": "degrees_north", "range": [20.0, 30.0],
+                             "step": 10.0, "ascending": True},
+                "longitude": {"name": "longitude", "units": "degrees_east", "range": [100.0, 120.0],
+                              "step": 1.0, "range_style": "0-360", "ascending": True},
+            },
+            "units": {"t": "K", "q": "kg kg**-1"},
+            "source": {"kind": "synthetic", "dataset": "test"},
+            "generation_method": "hybrid",
+            "model_name": "hybrid.test",
+            "model_version": "0.1.0",
+            "random_seed": 1,
+            "initial_conditions": None,
+            "boundary_conditions": None,
+            "physical_parameters": None,
+            "generation_config": None,
+            "quality_metrics": {"screening": {
+                "mask_applied": True, "rejection_rate": 0.05, "rejected_samples": 4,
+                "total_samples": 80, "accepted_samples": 76,
+            }},
+            "metadata": {"created_at": "2026-11-07T00:00:00Z"},
+        }
+        ds.attrs["atmosgen:contract"] = _json.dumps(contract)
+        return ds
+
+    # 4 masked elements out of 160 = 2.5% -> within declared 5% (allowed 8.5%)
+    legal = physical_module.run_physical_validation(_ds(4), thresholds={})
+    assert legal["metrics"]["finite"]["status"] == "PASS", legal["metrics"]["finite"]
+    # 60 masked elements = 37.5% >> declared 5% -> must FAIL even though declared
+    sneaky = physical_module.run_physical_validation(_ds(60), thresholds={})
+    assert sneaky["metrics"]["finite"]["status"] == "FAIL", sneaky["metrics"]["finite"]

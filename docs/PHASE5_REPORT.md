@@ -43,7 +43,9 @@
 
 ## 4. Test F 全链路
 
-`bash scripts/run_e2e.sh`：validate-config（4 配置）→ ingest（Test A）→ generate（Mode 1）→ generate（Mode 2）→ evaluate + report（统计用 `--real`、物理不传 `--real` 并给出理由）→ 求解器解析验证；**退出码 0，实测 1m51s**。
+`bash scripts/run_e2e.sh`：validate-config（4 配置）→ ingest（Test A）→ generate（Mode 1）→ generate（Mode 2）→ evaluate + report（统计用 `--real`、物理不传 `--real` 并给出理由）→ 求解器解析验证；本机（外置卷 `/Volumes/Untitled` 已挂载）**退出码 0，实测 1m51s**。
+
+> 前置条件：`ingest` 步骤需要本机 ERA5 外置卷 `/Volumes/Untitled` 已挂载。独立复核时（卷未挂载）该步报 `ERA5 archive root is not a directory` 并 exit 4，其余步骤单独运行均 exit 0——这是环境依赖，不是脚本缺陷；无卷时可按 `research/env/` 的说明改用 `data/processed/era5_local.nc` 已有产物跳过 ingest。
 
 ## 5. 状态汇总（不虚报）
 
