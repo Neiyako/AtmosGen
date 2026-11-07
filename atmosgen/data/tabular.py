@@ -288,7 +288,9 @@ def rows_to_fields(
         if spec_meta:
             dataset[name].attrs.setdefault("units", spec_meta[0])
             dataset[name].attrs.setdefault("long_name", spec_meta[1])
-    dataset["time"].attrs.setdefault("calendar", "proleptic_gregorian")
+    # NOTE: do not set a `calendar` attribute on `time` here — xarray's
+    # netCDF writer already injects one from its default CF encoding, and a
+    # duplicate raises "Key 'calendar' already exists in attrs" on save.
     return dataset
 
 

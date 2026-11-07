@@ -8,8 +8,8 @@ lazily by the phase that implements them, so ``atmosgen list-models`` and
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
 
 def _module_available(module: str) -> tuple[bool, str]:
@@ -20,6 +20,17 @@ def _module_available(module: str) -> tuple[bool, str]:
     except Exception as exc:  # pragma: no cover - broken installs
         return False, f"import {module} failed: {type(exc).__name__}: {exc}"
     return True, str(getattr(imported, "__version__", "unknown"))
+
+
+def _statistical_factory(model_name: str) -> Callable[[], type]:
+    """Lazy factory: importing sdv happens on first use, not import time."""
+
+    def _factory() -> type:
+        from .sdv_adapter import GENERATOR_CLASSES
+
+        return GENERATOR_CLASSES[model_name]
+
+    return _factory
 
 
 def _sdv_dependency() -> list[str]:
@@ -41,6 +52,7 @@ class ModelSpec:
     phase: int
     dependency_problems: Callable[[], list[str]]
     implemented: bool
+    factory: Optional[Callable[[], type]] = None
 
     def availability(self) -> tuple[bool, str]:
         problems = self.dependency_problems()
@@ -77,7 +89,8 @@ MODELS: dict[str, ModelSpec] = {
         description="SDV GaussianCopulaSynthesizer（统计 Copula；CPU 快，主实验默认）",
         phase=2,
         dependency_problems=_sdv_dependency,
-        implemented=False,
+        implemented=True,
+        factory=_statistical_factory("gaussian_copula"),
     ),
     "ctgan": ModelSpec(
         name="ctgan",
@@ -85,7 +98,8 @@ MODELS: dict[str, ModelSpec] = {
         description="SDV CTGANSynthesizer（深度 GAN；CPU 慢，作对比实验）",
         phase=2,
         dependency_problems=_sdv_dependency,
-        implemented=False,
+        implemented=True,
+        factory=_statistical_factory("ctgan"),
     ),
     "tvae": ModelSpec(
         name="tvae",
@@ -93,7 +107,8 @@ MODELS: dict[str, ModelSpec] = {
         description="SDV TVAESynthesizer（深度 VAE；CPU 中等）",
         phase=2,
         dependency_problems=_sdv_dependency,
-        implemented=False,
+        implemented=True,
+        factory=_statistical_factory("tvae"),
     ),
     "advection_diffusion": ModelSpec(
         name="advection_diffusion",

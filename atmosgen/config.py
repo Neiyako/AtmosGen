@@ -247,7 +247,9 @@ class SamplesConfig(_StrictModel):
     @model_validator(mode="after")
     def _check(self) -> "SamplesConfig":
         if self.unit == "cell_time" and self.rows is None:
-            raise ValueError("samples.unit=cell_time 时必须提供 samples.rows（表格行样本数）")
+            # rows default to "as many rows as the target grid needs"; the
+            # adapter takes max(configured, grid_rows) either way
+            pass
         if self.unit == "field" and self.fields is None:
             raise ValueError("samples.unit=field 时必须提供 samples.fields（场/时间步数）")
         return self

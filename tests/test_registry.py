@@ -45,10 +45,15 @@ def test_model_mode_validation():
     assert "advection_diffusion" in str(excinfo.value)
 
 
-def test_registry_report_marks_phase1_not_implemented():
+def test_registry_report_phase_status():
     report = registry_report()
     assert all(entry["phase"] >= 2 for entry in report)
-    assert all(entry["implemented"] is False for entry in report)
+    by_name = {entry["name"]: entry for entry in report}
+    # Phase 2: the statistical trio is implemented; physics/hybrid still pending
+    for name in ("gaussian_copula", "ctgan", "tvae"):
+        assert by_name[name]["implemented"] is True, name
+    for name in ("advection_diffusion", "hybrid"):
+        assert by_name[name]["implemented"] is False, name
 
 
 def test_base_generator_requires_lifecycle_implementation():

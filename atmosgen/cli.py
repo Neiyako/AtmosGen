@@ -10,6 +10,7 @@ Exit codes
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Optional
@@ -26,6 +27,9 @@ from .config import (
 )
 from .contract import ContractError
 from .data.preprocess import IngestError, ingest
+from .data.selection import SubsetError
+from .evaluation import EvaluationError, read_quality_report, run_evaluation
+from .generation import GenerationError, NotImplementedInPhase, run_generation
 from .generators.registry import registry_report
 
 EXIT_OK = 0
@@ -159,55 +163,159 @@ def command_list_models() -> None:
 @app.command("generate")
 def command_generate(
     config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False, readable=True, help="生成配置文件"),
-    overwrite: bool = typer.Option(False, "--overwrite", help="覆盖已存在的输出目录"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="覆盖已存在的 data.nc 输出"),
 ) -> None:
-    """生成数据（Phase 1 尚未实现：先校验配置，再明确报 NOT_RUN）。"""
+    """按配置生成合成数据（Mode 1 statistical；物理/混合在 Phase 3/4）。"""
 
-    del overwrite
+    code = run_generate_command(config_path=config, overwrite=overwrite)
+    raise typer.Exit(code=code)
+
+
+def run_generate_command(*, config_path: Path, overwrite: bool = False) -> int:
+    """Shared by the CLI and scripts/run_experiments.py."""
+
     try:
-        parsed = load_config_file(config)
+        parsed = load_config_file(config_path)
     except ConfigError as exc:
         _echo_error(str(exc))
-        raise typer.Exit(code=EXIT_USER_ERROR)
+        return EXIT_USER_ERROR
     if isinstance(parsed, IngestConfigFile):
-        _echo_error(f"{config} 是 ingest 配置，请用 `atmosgen ingest --config {config}`")
-        raise typer.Exit(code=EXIT_USER_ERROR)
-    assert isinstance(parsed, GenerationConfigFile)
+        _echo_error(f"{config_path} 是 ingest 配置，请用 `atmosgen ingest --config {config_path}`")
+        return EXIT_USER_ERROR
+    try:
+        outcome = run_generation(parsed, config_path=config_path, overwrite=overwrite)
+    except NotImplementedInPhase as exc:
+        typer.echo(f"NOT_RUN: {exc}")
+        return EXIT_NOT_IMPLEMENTED
+    except (
+        GenerationError,
+        SubsetError,
+        ContractError,
+        FileExistsError,
+        FileNotFoundError,
+        KeyError,
+        ValueError,
+        OSError,
+    ) as exc:
+        _echo_error(f"generate 失败: {type(exc).__name__}: {exc}")
+        return EXIT_RUNTIME_ERROR
+    except Exception as exc:  # noqa: BLE001 - keep the exit-code contract
+        _echo_error(f"generate 运行失败（未预期异常）: {type(exc).__name__}: {exc}")
+        return EXIT_RUNTIME_ERROR
+
+    meta = outcome.metadata
+    fit = meta.get("fit_resources") or {}
+    sample = meta.get("resources") or {}
+    samples = (outcome.contract or {}).get("generation_config", {}).get("samples", {})
+    subset = meta.get("subset") or {}
+    typer.echo(f"generate 完成: mode={meta.get('mode')} model={meta.get('model')} seed={meta.get('seed')}")
+    typer.echo(f"  run 目录:    {outcome.run_dir}")
+    typer.echo(f"  输出数据:    {outcome.data_path}")
+    if subset:
+        time_info = subset.get("time") or {}
+        typer.echo(
+            f"  训练子集:    {time_info.get('n', '?')} 时次 × "
+            f"{(subset.get('level') or {}).get('n', 1)} 层 × "
+            f"{(subset.get('latitude') or {}).get('n', '?')}×{(subset.get('longitude') or {}).get('n', '?')} 格点"
+        )
+    if samples:
+        typer.echo(
+            f"  样本:        unit={samples.get('unit')} rows_generated={samples.get('rows_generated')} "
+            f"(rows_requested={samples.get('rows_requested')})"
+        )
+    if fit:
+        typer.echo(f"  训练耗时:    {fit.get('elapsed_seconds')} s（fit 峰值 RSS {fit.get('peak_rss_mb')} MB）")
+    if sample:
+        typer.echo(f"  采样耗时:    {sample.get('elapsed_seconds')} s（sample 峰值 RSS {sample.get('peak_rss_mb')} MB）")
+    if meta.get("ignored_hyperparameters"):
+        typer.echo(
+            f"  忽略超参:    {meta['ignored_hyperparameters']}（当前 sdv 版本不支持，已记录不失败）"
+        )
     typer.echo(
-        f"配置合法：mode={parsed.generation.mode} model={parsed.generation.model} "
-        f"（Phase 1 仅完成骨架）"
+        f"下一步：atmosgen evaluate --input {outcome.data_path} --real <真实数据集>"
     )
-    typer.echo(
-        "NOT_RUN: generate 在 Phase 2（statistical）/ Phase 3（physics）/ Phase 4（hybrid）实现；"
-        "当前不生成数据，也不写占位文件"
-    )
-    raise typer.Exit(code=EXIT_NOT_IMPLEMENTED)
+    return EXIT_OK
 
 
 @app.command("evaluate")
 def command_evaluate(
-    input: Optional[Path] = typer.Option(None, "--input", help="待评价数据集（data.nc）"),
-    real: Optional[Path] = typer.Option(None, "--real", help="真实参考数据集"),
-    out: Optional[Path] = typer.Option(None, "--out", help="quality_report.json 输出路径"),
+    input: Path = typer.Option(..., "--input", exists=True, dir_okay=False, readable=True, help="待评价数据集（data.nc）"),
+    real: Optional[Path] = typer.Option(None, "--real", help="真实参考数据集；不给则整体 NOT_RUN"),
+    out: Optional[Path] = typer.Option(None, "--out", help="报告输出目录（默认与 --input 同目录）"),
+    config: Optional[Path] = typer.Option(None, "--config", help="generation 配置文件（提供 thresholds_overrides）"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="覆盖已存在的 quality_report.json"),
 ) -> None:
-    """质量评价（Phase 2 起实现；当前 NOT_RUN）。"""
+    """质量评价（statistical / temporal / spatial；physical 在 Phase 3）。"""
 
-    del input, real, out
-    typer.echo("NOT_RUN: evaluate 在 Phase 2 实现（statistical/temporal/spatial/physical 四类指标）")
-    raise typer.Exit(code=EXIT_NOT_IMPLEMENTED)
+    config_model: GenerationConfigFile | None = None
+    if config is not None:
+        try:
+            parsed = load_config_file(config)
+        except ConfigError as exc:
+            _echo_error(str(exc))
+            raise typer.Exit(code=EXIT_USER_ERROR)
+        if isinstance(parsed, IngestConfigFile):
+            _echo_error(f"--config {config} 是 ingest 配置，不是 generation 配置")
+            raise typer.Exit(code=EXIT_USER_ERROR)
+        config_model = parsed  # type: ignore[assignment]
+    try:
+        quality = run_evaluation(
+            input,
+            real_path=real,
+            config=config_model,
+            output_dir=out,
+            overwrite=overwrite,
+        )
+    except FileExistsError as exc:
+        _echo_error(f"{exc}（或传 --overwrite 重新生成）")
+        raise typer.Exit(code=EXIT_USER_ERROR)
+    except (EvaluationError, SubsetError, ContractError, KeyError, ValueError, OSError) as exc:
+        _echo_error(f"evaluate 失败: {type(exc).__name__}: {exc}")
+        raise typer.Exit(code=EXIT_RUNTIME_ERROR)
+    except Exception as exc:  # noqa: BLE001 - keep the exit-code contract
+        _echo_error(f"evaluate 运行失败（未预期异常）: {type(exc).__name__}: {exc}")
+        raise typer.Exit(code=EXIT_RUNTIME_ERROR)
+    typer.echo(f"overall_status: {quality['overall_status']}")
+    for name in ("statistical", "temporal", "spatial"):
+        block = quality.get(name) or {}
+        typer.echo(f"  {name:<12} {block.get('status', 'MISSING')}")
+    for path_key in ("json", "md"):
+        typer.echo(f"  {path_key}: {quality['report_paths'][path_key]}")
+    if quality["overall_status"] != "PASS":
+        typer.echo("说明：状态与阈值明细见 quality_report.json / quality_report.md")
 
 
 @app.command("report")
 def command_report(
-    input: Optional[Path] = typer.Option(None, "--input", help="数据集路径"),
+    input: Path = typer.Option(..., "--input", help="quality_report(.json) 文件或其所在 run 目录"),
     format: str = typer.Option("md", "--format", help="md | json"),
-    out: Optional[Path] = typer.Option(None, "--out", help="报告输出路径"),
+    out: Optional[Path] = typer.Option(None, "--out", help="Markdown 输出路径（默认打印到 stdout）"),
 ) -> None:
-    """生成质量报告（Phase 2 起实现；当前 NOT_RUN）。"""
+    """把 quality_report.json 渲染为 Markdown（或原样输出 JSON）。"""
 
-    del input, format, out
-    typer.echo("NOT_RUN: report 在 Phase 2 实现（quality_report.{json,md} + figures）")
-    raise typer.Exit(code=EXIT_NOT_IMPLEMENTED)
+    try:
+        quality = read_quality_report(input)
+    except EvaluationError as exc:
+        _echo_error(str(exc))
+        raise typer.Exit(code=EXIT_USER_ERROR)
+    if format == "json":
+        typer.echo(json.dumps(quality, ensure_ascii=False, indent=2, default=str))
+        return
+    if format != "md":
+        _echo_error(f"format 必须是 md|json，得到 {format!r}")
+        raise typer.Exit(code=EXIT_USER_ERROR)
+    from .validation.report import render_markdown
+
+    markdown = render_markdown(quality)
+    if out is not None:
+        Path(out).write_text(markdown, encoding="utf-8")
+        typer.echo(f"Markdown 已写入: {out}")
+        typer.echo(markdown)
+    else:
+        typer.echo(markdown)
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(app())
 
 
 if __name__ == "__main__":  # pragma: no cover
