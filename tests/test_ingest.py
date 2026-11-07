@@ -210,6 +210,48 @@ def test_read_only_assertion_can_be_disabled(tmp_path, write_yaml):
     assert report.status == "CONDITIONAL_PASS"
 
 
+def test_local_netcdf_ingest_records_level_type(tmp_path, write_yaml):
+    source = tmp_path / "model_level.nc"
+    ds = xr.Dataset(
+        {
+            "clwc": (
+                ("valid_time", "model_level", "latitude", "longitude"),
+                np.full((1, 2, 2, 2), 1e-4),
+                {"units": "kg kg**-1", "long_name": "Specific cloud liquid water content"},
+            )
+        },
+        coords={
+            "valid_time": (("valid_time",), np.array(["2024-01-01T00"], dtype="datetime64[ns]")),
+            "model_level": (("model_level",), [1.0, 2.0], {"units": "1"}),
+            "latitude": (("latitude",), [25.0, 30.0], {"units": "degrees_north"}),
+            "longitude": (("longitude",), [70.0, 75.0], {"units": "degrees_east"}),
+        },
+    )
+    ds.to_netcdf(source, engine="netcdf4")
+    config_path = write_yaml(
+        "model_level.yaml",
+        {
+            "project": {"name": "ml", "seed": 1, "output_dir": str(tmp_path / "output")},
+            "source": {
+                "kind": "local_netcdf",
+                "input": str(source),
+                "vertical": "model_level",
+                "variable_map": {"clwc": "clwc"},
+            },
+            "output": {"processed_path": str(tmp_path / "processed" / "ml.nc")},
+        },
+    )
+    report = ingest(load_config_file(config_path), config_path=config_path)
+    assert report.status == "PASS", report.checks
+    out = open_source(report.processed_path)
+    try:
+        contract = read_contract(out)
+        assert contract["coordinates"]["level"]["type"] == "model_level"
+        assert contract["coordinates"]["level"]["units"] == "1"
+    finally:
+        out.close()
+
+
 def test_ingest_local_netcdf_cloud_sample(tmp_path, write_yaml):
     rng = np.random.default_rng(0)
     source = tmp_path / "cloud.nc"

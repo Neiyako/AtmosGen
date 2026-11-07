@@ -891,6 +891,10 @@ def _ingest_local_netcdf(
             rename_map["valid_time"] = "time"
         if "pressure_level" in ds.coords or "pressure_level" in ds.dims:
             rename_map["pressure_level"] = "level"
+        if "model_level" in ds.coords or "model_level" in ds.dims:
+            # model-level ERA5 files use a ``model_level`` dimension; the
+            # AtmosGen contract always names the vertical axis ``level``.
+            rename_map["model_level"] = "level"
         selected: dict[str, xr.DataArray] = {}
         for canonical, mapped in (source.variable_map or {}).items():
             if canonical not in known_variables():
@@ -935,6 +939,7 @@ def _ingest_local_netcdf(
             "license": "Copernicus Climate Change Service (C3S) licence",
         },
         random_seed=seed,
+        level_type=source.vertical,
         generation_config={
             "config_path": str(config_path) if config_path else None,
             "config_sha256": config_sha256(config_path) if config_path else None,

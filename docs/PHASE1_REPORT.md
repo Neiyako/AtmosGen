@@ -29,10 +29,10 @@
 | 数据 IO | `atmosgen/data/io.py`（NetCDF4/zarr、原子写、raw 写保护、只读打开） | 往返一致；写 `data/raw` 被 `RawWriteError` 拒绝 |
 | 真实数据 ingest | `atmosgen/data/preprocess.py`、`scripts/ingest_local_era5.py` | **Test A PASS**（§4） |
 | registry + 生成器基类 | `atmosgen/generators/{base,registry}.py` | 5 个模型注册、`list-models` 输出；基类生命周期单测 |
-| 基础测试 | `tests/` 6 个文件 **54 个用例** | `pytest -q` → **54 passed in 4.11 s** |
+| 基础测试 | `tests/` 6 个文件 **55 个用例** | `pytest -q` → **55 passed in 3.95 s** |
 | 运行时/资源记账 | `atmosgen/runner.py`（run 目录、种子、elapsed/峰值 RSS、环境快照） | ingest run 目录含 `config.yaml` + `environment.json` + `test_a_report.json` |
 
-代码规模：`atmosgen/` 11 个模块 3 520 行（含文档字符串），`tests/` 1 039 行。
+代码规模：`atmosgen/` 11 个模块 3 525 行（含文档字符串），`tests/` 1 081 行。
 
 ## 4. Test A · 真实数据读取（证据）
 
@@ -83,7 +83,7 @@ relative difference                      : 2.36e-16
 
 ## 5. 测试与验收
 
-- `pytest -q`：**54 passed，4.11 s**（契约 10、IO 9、配置 14、ingest 7、registry 5、CLI 9）
+- `pytest -q`：**55 passed，3.95 s**（契约 10、IO 9、配置 14、ingest 8、registry 5、CLI 9）
 - `atmosgen validate-config` 正例：`demo.yaml`、`era5_ingest.yaml`、`era5_cloud_sample.yaml`、`physics_advection.yaml`、`stat_gaussian_copula.yaml`、`stat_ctgan.yaml` → PASS；负例：`samples.unit=field`+SDV、未知模型、physics 缺 physics 段、CFL 超限、阈值越界、local_era5 缺 root/date_range 等均被拒（退出码 2）
 - `atmosgen list-models`：5 个模型注册（3 统计 / 1 物理 / 1 混合），标注阶段与依赖状态
 - CLI 退出码：`--version`=0；`validate-config` 合法 0 / 非法 2；`ingest` 成功 0 / 失败 4 / 传错配置类型 2；`generate|evaluate|report`=3 且输出 `NOT_RUN`
@@ -136,9 +136,11 @@ Phase 1 完成后由独立验收员（只读复核 + 现场复跑，不采信仓
 | ID | 第三轮残留问题 | 处理 | 证据 |
 |---|---|---|---|
 | N1 | `local_netcdf` 仍静默接受 `file_pattern`；`local_era5` 仍静默接受 `input` | `source` 字段按 kind 白名单：archive-only 字段（root/years/date_range/file_pattern）只允许 local_era5，`input` 只允许 local_netcdf，`request` 只允许 cds | `test_local_netcdf_rejects_archive_only_fields`、`test_local_era5_rejects_netcdf_only_fields`；手工验证两例 exit 2 |
-| N2 | model-level 数据（units=`1`）被契约记为 `pressure_level` | `build_contract(..., level_type=...)` 接收配置 `source.vertical` 并写入契约；ingest 两条路径均传入 | 单测 `test_level_type_override_is_recorded`；实测 `{'type':'model_level','units':'1'}` |
+| N2 | model-level 数据（units=`1`）被契约记为 `pressure_level` | `build_contract(..., level_type=...)` 接收配置 `source.vertical` 并写入契约；local_era5（raw/processed）与 local_netcdf 三条 build_contract 调用均传入 | 单测 `test_level_type_override_is_recorded`、`test_local_netcdf_ingest_records_level_type`；实测 `{'type':'model_level','units':'1'}` |
 | N3 | `data.nc` 与 `data.zarr` 侧车都映射 `contract.json` | 侧车约定改为"仅 netcdf 的 `data.nc` 用 `contract.json`"，其余用完整文件名 | `test_sidecar_does_not_collide_within_one_directory` 扩展 |
 | N4 | 报告侧车命名表述、负例计数口径不一致 | §6.5 F7 表述改为"完整文件名"；负例计数按实际测试改为 9 类 | 本轮报告数字 |
+
+> | B1 | 第四轮复核发现的 1 行遗漏：`_ingest_local_netcdf` 的 `build_contract()` 未传 `level_type`（同时暴露 `model_level` 维度未重命名） | 补传 `level_type=source.vertical`；`model_level` 维度与 `pressure_level` 一并重命名为 `level`；新增 local_netcdf + model_level 的 ingest 契约断言 | 单测 `test_local_netcdf_ingest_records_level_type`；用第三轮 verifier 的原始复现 `/tmp/agver3/ml/config.yaml` 重跑 → 契约类型 `model_level`、`units=1`、exit 0 |
 
 > 顺带修复：YAML 未加引号的日期（`date_range: [2010-05-01, 2010-05-02]`）此前被解析为 `date` 对象而校验失败；已加 `field_validator(mode="before")` 统一转 ISO 字符串。
 
