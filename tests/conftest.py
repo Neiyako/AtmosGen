@@ -31,8 +31,8 @@ def build_small_dataset(
         dtype="datetime64[ns]",
     )[:ntime]
     levels = np.array([500.0, 700.0, 850.0])[:nlevel]
-    lats = np.array([20.0, 25.0, 30.0, 40.0])[:nlat]
-    lons = np.array([100.0, 105.0, 110.0, 115.0])[:nlon]
+    lats = np.linspace(20.0, 45.0, nlat)
+    lons = np.linspace(100.0, 125.0, nlon)
     coords: dict[str, Any] = {"time": times, "latitude": lats, "longitude": lons}
     if with_level:
         coords["level"] = levels
