@@ -94,6 +94,44 @@ def test_unstable_parameters_raise():
         check_stability(u0=0.0, v0=0.0, kappa=8.0e5, dt_s=600.0, dx_m=42_000.0, dy_m=42_000.0)
 
 
+def test_joint_cfl_rejected_even_if_each_axis_passes():
+    """Phase 3 review F1: Cx=Cy=1.0 explodes despite per-axis conditions."""
+
+    # old per-axis check alone would accept this; the joint condition must not
+    with pytest.raises(PhysicsError):
+        check_stability(u0=8.0, v0=8.0, kappa=0.0, dt_s=5250.0, dx_m=42_000.0, dy_m=42_000.0)
+    # ... and the shipped config must still pass comfortably
+    check_stability(u0=8.0, v0=2.0, kappa=1.0e5, dt_s=600.0, dx_m=42_000.0, dy_m=42_000.0)
+
+
+def test_from_real_negative_field_warns():
+    import xarray as xr
+
+    real = xr.Dataset(
+        {
+            "tcwv": (
+                ("time", "latitude", "longitude"),
+                -np.abs(np.random.default_rng(1).normal(5.0, 2.0, (2, 6, 6))),
+                {"units": "kg m**-2", "long_name": "tcwv"},
+            )
+        },
+        coords={
+            "time": np.array(["2020-01-01T00", "2020-01-01T06"], dtype="datetime64[ns]"),
+            "latitude": np.linspace(20.0, 45.0, 6),
+            "longitude": np.linspace(100.0, 125.0, 6),
+        },
+    )
+    _, diagnostics = solve_advection_diffusion(
+        grid={"nx": 24, "ny": 24, "dx_m": 42_000.0, "dy_m": 42_000.0},
+        time={"dt_s": 600.0, "steps": 4},
+        parameters={"u0": 5.0, "v0": 1.0, "kappa": 1.0e5},
+        initial_condition={"kind": "from_real", "variable": "tcwv"},
+        boundary_condition={"kind": "fixed_from_real"},
+        real=real,
+    )
+    assert any("负值" in message for message in diagnostics.warnings), diagnostics.warnings
+
+
 def test_open_boundaries_and_saved_fields():
     dataset, diagnostics = solve_advection_diffusion(
         grid={"nx": 32, "ny": 32, "dx_m": 42_000.0, "dy_m": 42_000.0},

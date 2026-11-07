@@ -158,8 +158,8 @@ def command_list_models() -> None:
         typer.echo(f"{row['name']:<22}{row['mode']:<12}{row['phase']:<7}{deps:<10}{row['status']}")
     typer.echo("")
     typer.echo(
-        "说明：Phase 2 已实现 statistical 三模型（SDV，level_wise 方案）；"
-        "physics（Phase 3）/ hybrid（Phase 4）仍为 NOT_RUN。"
+        "说明：Phase 2 statistical 三模型（SDV level_wise）与 Phase 3 physics 求解器已实现；"
+        "hybrid（Phase 4）仍为 NOT_RUN。"
     )
 
 

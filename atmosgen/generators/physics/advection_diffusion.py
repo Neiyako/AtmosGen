@@ -82,21 +82,34 @@ def check_stability(
         raise PhysicsError(f"dt/dx/dy 必须 > 0，得到 dt={dt_s}, dx={dx_m}, dy={dy_m}")
     if kappa < 0:
         raise PhysicsError(f"kappa 必须 ≥ 0，得到 {kappa}")
+    r_x = kappa * dt_s / dx_m**2
+    r_y = kappa * dt_s / dy_m**2
     cfl_x = abs(u0) * dt_s / dx_m
     cfl_y = abs(v0) * dt_s / dy_m
-    # 2-D explicit diffusion stability (von Neumann): the diffusion numbers of
-    # BOTH axes must sum to <= 0.5, i.e. kappa*dt*(1/dx^2 + 1/dy^2) <= 0.5.
-    # Checking kappa*dt/min(dx,dy)^2 <= 0.5 alone is wrong: on a square grid it
-    # permits r=0.4 per axis (total 0.8), which explodes within a few steps —
-    # caught by the convergence test, fixed here (documented in PHASE3_REPORT).
-    diffusion = kappa * dt_s * (1.0 / dx_m**2 + 1.0 / dy_m**2)
+    diffusion = r_x + r_y  # κ·dt·(1/dx²+1/dy²)
+    # Stability of Euler + upwind advection + central diffusion in 2D
+    # (von Neumann; verified by scripts/validate_solver_analytic.py and the
+    # Phase 3 review):
+    #   * per-axis combined advection+diffusion (Charney): C + 2r <= 1;
+    #   * diffusion sum: r_x + r_y <= 0.5;
+    #   * JOINT advective diagonal: Cx + Cy <= 1 for pure advection; with
+    #     diffusion present we use the conservative
+    #     (Cx + Cy) + 2(r_x + r_y) <= 1. Each axis alone <= 1 is NOT enough:
+    #     dx=dy=42 km, dt=5250 s, u0=v0=8 (two CFLs of 1.0, both per-axis
+    #     conditions pass) explodes to |c|~5e124 in 300 steps.
     problems = []
-    if cfl_x > 1.0:
-        problems.append(f"CFL_x={cfl_x:.3f}>1")
-    if cfl_y > 1.0:
-        problems.append(f"CFL_y={cfl_y:.3f}>1")
+    if cfl_x + 2 * r_x > 1.0:
+        problems.append(f"单轴稳定性 Cx+2r_x={cfl_x + 2 * r_x:.3f}>1")
+    if cfl_y + 2 * r_y > 1.0:
+        problems.append(f"单轴稳定性 Cy+2r_y={cfl_y + 2 * r_y:.3f}>1")
     if diffusion > 0.5:
         problems.append(f"扩散稳定性 κ·dt·(1/dx²+1/dy²)={diffusion:.3f}>0.5")
+    joint = (cfl_x + cfl_y) + 2 * diffusion
+    if joint > 1.0:
+        problems.append(
+            f"2D 联合稳定性 (Cx+Cy)+2(Rx+Ry)={joint:.3f}>1"
+            "（双轴各自的 CFL≤1 不够；减小 dt_s、增大网格或降低 u0/v0/κ）"
+        )
     if problems:
         raise PhysicsError(
             "物理参数不满足显式格式稳定性要求: " + "; ".join(problems) + "（减小 dt_s 或增大网格间距）"
@@ -184,6 +197,13 @@ def solve_advection_diffusion(
         raise PhysicsError(f"初始场形状 {field.shape} 与网格 ({ny}, {nx}) 不符")
     if not np.all(np.isfinite(field)):
         raise PhysicsError("初始场包含 NaN/Inf；检查 initial_condition 与真实场插值范围")
+    negative_note: list[str] = []
+    if float(np.min(field)) < 0 and str(initial_condition.get("kind")) == "from_real":
+        negative_note.append(
+            f"from_real 初始场含负值（min={float(np.min(field)):.4g}）："
+            "物理浓度 c 为非负硬约束，后续 c_nonneg 会 FAIL；"
+            "如需正定浓度请换变量或显式加偏移并在报告说明"
+        )
 
     diagnostics = SolverDiagnostics(
         cfl_x=stability["cfl_x"],
@@ -266,6 +286,7 @@ def solve_advection_diffusion(
     diagnostics.saved_fields = len(snapshots)
     if schedule_notes:
         diagnostics.warnings.extend(schedule_notes)
+    diagnostics.warnings.extend(negative_note)
     if c_max > 1e6:
         diagnostics.warnings.append(f"浓度峰值 {c_max:.3g} 偏大，检查 amplitude/真实场量纲")
 

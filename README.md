@@ -45,7 +45,7 @@ conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
 pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令
-pytest -q                        # 129 个用例（Phase 1–3）
+pytest -q                        # 131 个用例（Phase 1–3）
 ```
 
 版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 独立环境已实测（Python 3.10 + torch 2.2.x + numpy<2，需 pin `scipy==1.11.4`、`opacus==1.4.1`），结论见 [docs/DEPENDENCY_COMPATIBILITY.md](docs/DEPENDENCY_COMPATIBILITY.md) §10。

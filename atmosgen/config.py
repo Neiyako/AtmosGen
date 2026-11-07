@@ -350,19 +350,25 @@ class PhysicsConfig(_StrictModel):
     @model_validator(mode="after")
     def _check_cfl(self) -> "PhysicsConfig":
         dt = self.time.dt_s
+        r_x = self.parameters.kappa * dt / self.grid.dx_m**2
+        r_y = self.parameters.kappa * dt / self.grid.dy_m**2
         cfl_x = abs(self.parameters.u0) * dt / self.grid.dx_m
         cfl_y = abs(self.parameters.v0) * dt / self.grid.dy_m
-        diffusion = self.parameters.kappa * dt * (
-            1.0 / self.grid.dx_m**2 + 1.0 / self.grid.dy_m**2
-        )
+        diffusion = r_x + r_y
         problems = []
-        if cfl_x > 1.0:
-            problems.append(f"CFL_x=|u0|·dt/dx={cfl_x:.3f}>1（减小 dt_s 或增大 dx_m）")
-        if cfl_y > 1.0:
-            problems.append(f"CFL_y=|v0|·dt/dy={cfl_y:.3f}>1（减小 dt_s 或增大 dy_m）")
+        if cfl_x + 2 * r_x > 1.0:
+            problems.append(f"单轴稳定性 Cx+2r_x={cfl_x + 2 * r_x:.3f}>1（减小 dt_s 或增大 dx_m）")
+        if cfl_y + 2 * r_y > 1.0:
+            problems.append(f"单轴稳定性 Cy+2r_y={cfl_y + 2 * r_y:.3f}>1（减小 dt_s 或增大 dy_m）")
         if diffusion > 0.5:
             problems.append(
                 f"扩散稳定性 κ·dt·(1/dx²+1/dy²)={diffusion:.3f}>0.5（减小 dt_s 或增大网格间距）"
+            )
+        joint = (cfl_x + cfl_y) + 2 * diffusion
+        if joint > 1.0:
+            problems.append(
+                f"2D 联合稳定性 (Cx+Cy)+2(Rx+Ry)={joint:.3f}>1"
+                "（双轴 CFL≤1 不够；减小 dt_s、增大网格或降低 u0/v0/κ）"
             )
         if problems:
             raise ValueError("physics 参数不满足显式格式稳定性要求: " + "; ".join(problems))
