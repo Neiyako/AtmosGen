@@ -4,7 +4,7 @@ aiosignal==1.4.0
 annotated-doc==0.0.5
 annotated-types==0.8.0
 # Editable Git install with no remote (atmosgen==0.1.0)
--e /Users/apple/Desktop/Atmospheric Data Generation
+-e <repo>
 attrs==26.1.0
 boto3==1.43.125
 botocore==1.43.125

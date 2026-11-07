@@ -4,7 +4,7 @@ I1106 23:17:47.677601 10647463 ev_poll_posix.cc:588] FD from fork parent still i
 [TIME] coordinate read 1323648 values in 0.0s; first=1900-01-01T00:00:00.000000000 last=2050-12-31T23:00:00.000000000
 [INDEX] target=2020-01-01T00 -> idx=1051896 actual=2020-01-01T00:00:00.000000000
 Traceback (most recent call last):
-  File "/Users/apple/Desktop/Atmospheric Data Generation/research/env/probe_arco_read.py", line 44, in <module>
+  File "<repo>/research/env/probe_arco_read.py", line 44, in <module>
     info = fs.info(chunk_obj)
            ^^^^^^^^^^^^^^^^^^
   File "/opt/miniconda3/envs/atmosgen/lib/python3.11/site-packages/fsspec/asyn.py", line 217, in wrapper

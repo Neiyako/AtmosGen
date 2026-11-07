@@ -2,7 +2,7 @@
 
 - Generated: 2026-11-06 23:31:59 Asia/Shanghai
 - **Read-only declaration**: the original DBAS download was NOT modified; a byte-copy was placed in data/raw/ for offline reference.
-- Source: `/Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc` (45855 B)
+- Source: `<local>/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc` (45855 B)
 - Copy: `data/raw/era5_cloud_sample_20240101.nc` (45855 B)
 
 ## dims

@@ -269,7 +269,7 @@ SDGym 面向表格基准（adult、census 等），与大气场无关；只借"�
 
 ### 7.2 云水变量（clwc/ciwc/crwc/cswc）
 
-- 本机缺乏这四个变量的大范围数据。已核实可用的真实样本：`/Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc`（CDS `reanalysis-era5-pressure-levels` 下载），实测含 **`clwc`、`ciwc`**，`dims=(valid_time=1, pressure_level=3, latitude=61, longitude=141)`，单位 `kg kg**-1`（青藏高原区域、3 层、1 时次）。
+- 本机缺乏这四个变量的大范围数据。已核实可用的真实样本：`<local>/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc`（CDS `reanalysis-era5-pressure-levels` 下载），实测含 **`clwc`、`ciwc`**，`dims=(valid_time=1, pressure_level=3, latitude=61, longitude=141)`，单位 `kg kg**-1`（青藏高原区域、3 层、1 时次）。
 - 用户机器存在 `~/.cdsapirc`（仅做存在性检查，不读取内容），且既有项目 DBAS 留有可用的 CDS 拉取配置与成本分析（`era5数据dbas/configs/fetch/era5_clwc_ciwc.yaml`；实测 CDS 单请求成本上限 60000，1 天全 37 层 24 时次 ≈ 10656，5 天 ≈ 53280 可过——见其 README/config 注释）。
 - **crwc/cswc 尚未获取** → 计划：Phase 1 用 CDS 拉小切片（1–2 天、区域 [70,50,-10,160]、37 层、2 变量）；若队列/成本不可接受，标记 NOT_RUN，绝不伪造。
 - 云水样本与主归档**区域/时间不同**，因此不能混进同一个规范数据集；作为独立小数据集（`data/processed/era5_cloud_sample.nc`）验证契约与物理约束路径。

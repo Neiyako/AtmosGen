@@ -2,7 +2,7 @@
 
 - 执行人：engineer；时间：2026-11-06 23:09–23:50（Asia/Shanghai），按 Lead 指令时间盒收尾
 - 机器：macOS / arm64 / 8 GB RAM；磁盘剩余 228 GiB；conda 26.3.2（`/opt/miniconda3`）；git 2.54.0
-- 工作目录：`/Users/apple/Desktop/Atmospheric Data Generation`
+- 工作目录：`<repo>`
 - 口径：PASS=实测通过；CONDITIONAL_PASS=通路通但有明确降级；FAIL=实测失败；NOT_RUN=按指令未执行（**不可当通过**）。
 - 全部结论附**实际命令 + 输出摘要 + 日志文件名 + 退出码**；日志在 `research/env/logs/`。
 
@@ -97,7 +97,7 @@
 - 摘要：`data/raw/era5_local_slice_SUMMARY.md`（含来源路径、映射、单位、dims、NaN、大小、耗时、只读声明）
 
 **C. 云水样本（clwc/ciwc，已落盘）**
-- 源：`/Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc`（45,855 B，只读，未改动）
+- 源：`<local>/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc`（45,855 B，只读，未改动）
 - 副本：**`data/raw/era5_cloud_sample_20240101.nc`（45,855 B）**
 - dims：`valid_time:1, pressure_level:3, latitude:61, longitude:141`；data_vars = `clwc, ciwc`
 - units 均为 `kg kg**-1`；范围：clwc 0–1.662e-4、ciwc 0–1.049e-4；**NaN 0/25,803**

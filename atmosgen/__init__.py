@@ -14,5 +14,5 @@ Phase 1 implements: contract, IO, config validation, real-data ingest, model
 registry and generator base class. Generation and validation arrive in Phase 2+.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __all__ = ["__version__"]

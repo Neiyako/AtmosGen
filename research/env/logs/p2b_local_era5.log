@@ -57,7 +57,7 @@
 [SUMMARY] wrote data/raw/era5_local_slice_SUMMARY.md
 
 === C. cloud-water sample (clwc/ciwc) ===
-[COPY] /Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc -> data/raw/era5_cloud_sample_20240101.nc (45855 B)
+[COPY] <local>/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc -> data/raw/era5_cloud_sample_20240101.nc (45855 B)
 [CLOUD] dims={'valid_time': 1, 'pressure_level': 3, 'latitude': 61, 'longitude': 141} coords=['number', 'valid_time', 'pressure_level', 'latitude', 'longitude', 'expver'] data_vars=['clwc', 'ciwc']
 [CLOUD VAR] clwc: dims=('valid_time', 'pressure_level', 'latitude', 'longitude') units=kg kg**-1 long_name=Specific cloud liquid water content min=0 max=0.000166178 nan=0/25803
 [CLOUD VAR] ciwc: dims=('valid_time', 'pressure_level', 'latitude', 'longitude') units=kg kg**-1 long_name=Specific cloud ice water content min=0 max=0.000104904 nan=0/25803

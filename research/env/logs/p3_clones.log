@@ -1,4 +1,4 @@
-+ cd '/Users/apple/Desktop/Atmospheric Data Generation/third_party/_ref'
++ cd '<repo>/third_party/_ref'
 + for repo in sdv-dev/SDV vanderschaarlab/synthcity sdv-dev/SDGym pdebench/PDEBench AI4Science-WestlakeU/RealPDEBench
 ++ basename sdv-dev/SDV
 + name=SDV

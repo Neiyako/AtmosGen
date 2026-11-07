@@ -38,7 +38,7 @@ def _generation_yaml(path: Path, model: str = "gaussian_copula") -> Path:
 def test_version():
     result = runner.invoke(app, ["--version"])
     assert result.exit_code == 0
-    assert "atmosgen 0.1.0" in result.stdout
+    assert "atmosgen 1.0.0" in result.stdout
 
 
 def test_list_models():

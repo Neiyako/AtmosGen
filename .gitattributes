@@ -1,0 +1,11 @@
+# Normalise text files in the repository (keep line endings stable across platforms)
+* text=auto eol=lf
+*.py text diff=python
+*.md text
+*.yaml text
+*.yml text
+*.toml text
+*.sh text eol=lf
+*.nc binary
+*.png binary
+*.zarr binary

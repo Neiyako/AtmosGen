@@ -12,7 +12,7 @@ DATE = "20100501"
 FILES = {short: f"{SRC}/ERA5_025dg_{DATE}_{long}.nc" for short, long in
          {"t": "temperature", "q": "specific_humidity",
           "u": "u_component_of_wind", "v": "v_component_of_wind"}.items()}
-CLOUD = "/Users/apple/Desktop/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc"
+CLOUD = "<local>/era5数据dbas/data/downloads/reanalysis-era5-pressure-levels/2024/20240101_multi_fdb02e.nc"
 OUT_NC = "data/raw/era5_local_slice_20100501.nc"
 OUT_MD = "data/raw/era5_local_slice_SUMMARY.md"
 CLOUD_NC = "data/raw/era5_cloud_sample_20240101.nc"
