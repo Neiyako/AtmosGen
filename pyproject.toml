@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "atmosgen"
-version = "1.0.0"
+version = "1.1.0"
 description = "Atmospheric synthetic data generation: unified data contract, SDV statistical generation, self-written 2D advection-diffusion solver, hybrid physics-conditioned generation, four-class quality validation"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -2,7 +2,7 @@
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-informational)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-informational)](CHANGELOG.md)
 [![Tests](https://img.shields.io/badge/tests-140%20passed-success)](https://github.com/Neiyako/AtmosGen/actions)
 
 面向大气科学研究的**仿真数据生成框架**：输入真实大气数据（ERA5），指定生成条件与规模，输出**带统一数据契约**的合成数据，并附带**四类质量验证报告**（统计 / 时间 / 空间 / 物理）。
@@ -75,7 +75,7 @@ pip install -e '.[stat]'    # 需要统计生成时再加 sdv/sdmetrics/scikit-l
 pip install -e '.[dev]'     # 需要开发/测试时再加 pytest
 
 # 3) 验证安装
-atmosgen --version          # -> atmosgen 1.0.0
+atmosgen --version          # -> atmosgen 1.1.0
 pytest -q                   # -> 140 passed
 ```
 
@@ -337,7 +337,7 @@ research/    # Phase 0 证据（环境探测、外部资料核对）
 ## 15. 复现与验证
 
 ```bash
-pytest -q                                     # 148 passed
+pytest -q                                     # 156 passed
 python scripts/validate_solver_analytic.py    # 求解器 6 项解析/守恒/稳定性验证
 python scripts/run_experiments.py --experiments e1,e2,e3   # benchmark → output/experiments/summary.json
 python scripts/quality_fidelity.py --real data/processed/era5_local.nc \
@@ -367,7 +367,7 @@ pip install -e '.[dev]'        # 开发依赖
   author = {{AtmosGen contributors}},
   year   = {2026},
   url    = {https://github.com/Neiyako/AtmosGen},
-  version = {1.0.0}
+  version = {1.1.0}
 }
 ```
 

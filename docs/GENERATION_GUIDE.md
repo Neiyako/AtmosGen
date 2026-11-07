@@ -15,7 +15,7 @@ pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics psutil
 pip install -e . --no-deps        # 安装 atmosgen 包与 atmosgen 命令
 atmosgen --version               # -> atmosgen 0.1.0
-pytest -q                        # 137 个用例（Phase 1–5）
+pytest -q                        # 156 个用例（Phase 1–6）
 ```
 
 | 项 | 说明 |
