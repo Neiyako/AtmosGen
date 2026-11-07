@@ -1,0 +1,160 @@
+{
+  "started_at": "2026-11-07T20:00:02",
+  "tests": {
+    "diffusion_convergence": {
+      "cases": [
+        {
+          "nx": 50,
+          "dx_m": 20000.0,
+          "dt_s": 400.0,
+          "steps": 50,
+          "t_end_s": 20000.0,
+          "l2_relative_error": 0.0018397863480561006,
+          "mass_drift_max": 3.605196157817581e-16
+        },
+        {
+          "nx": 100,
+          "dx_m": 10000.0,
+          "dt_s": 100.0,
+          "steps": 200,
+          "t_end_s": 20000.0,
+          "l2_relative_error": 0.00044997732976925314,
+          "mass_drift_max": 1.802598078908789e-16
+        },
+        {
+          "nx": 200,
+          "dx_m": 5000.0,
+          "dt_s": 25.0,
+          "steps": 800,
+          "t_end_s": 20000.0,
+          "l2_relative_error": 0.00011188738382538513,
+          "mass_drift_max": 3.6051961578175407e-16
+        }
+      ],
+      "observed_order": [
+        2.0316140135372955,
+        2.0078049487272067
+      ],
+      "pass": true
+    },
+    "advection_displacement": {
+      "u0": 10.0,
+      "v0": 2.0,
+      "t_end_s": 12000.0,
+      "expected_displacement_x_m": 120000.0,
+      "measured_displacement_x_m": 117954.11656456401,
+      "relative_error_x": 0.017049028628633216,
+      "expected_displacement_y_m": 24000.0,
+      "measured_displacement_y_m": 23998.949628462055,
+      "relative_error_y": 4.376548074772775e-05,
+      "mass_drift_max": 2.307327021906783e-16,
+      "pass": true
+    },
+    "mass_conservation": {
+      "steps": 240,
+      "max_relative_drift": 2.861804710075594e-16,
+      "max_relative_drift_per_step": 2.861804710075594e-16,
+      "pass": true
+    },
+    "stability_max_cfl": {
+      "cfl_x": 1.0,
+      "steps": 100,
+      "finite": true,
+      "max_abs": 0.9843079494274357,
+      "mass_drift_max": 0.0,
+      "pass": true
+    },
+    "c_parameter_sensitivity": {
+      "scenarios": {
+        "base": {
+          "centroid_x_m": 460797.16804200225,
+          "centroid_y_m": 115199.99999999674,
+          "std_x_m": 176560.3001533933,
+          "std_y_m": 136856.01497990655,
+          "max": 0.10404906983741502,
+          "mass": 8.938254380964642,
+          "u0": 8.0,
+          "v0": 2.0,
+          "kappa": 100000.0,
+          "ic_center": [
+            30.0,
+            110.0
+          ],
+          "mass_drift_max": 3.9747287640040097e-16
+        },
+        "shifted_ic": {
+          "centroid_x_m": 663377.2510063186,
+          "centroid_y_m": 337839.9999999969,
+          "std_x_m": 180303.10536118472,
+          "std_y_m": 136856.0149799066,
+          "max": 0.10404906983741456,
+          "mass": 8.938254380964604,
+          "u0": 8.0,
+          "v0": 2.0,
+          "kappa": 100000.0,
+          "ic_center": [
+            32.0,
+            112.0
+          ],
+          "mass_drift_max": 1.9873643820020127e-16
+        },
+        "strong_diffusion": {
+          "centroid_x_m": 459004.2203347516,
+          "centroid_y_m": 115198.35284318551,
+          "std_x_m": 280418.8765044943,
+          "std_y_m": 254577.646333861,
+          "max": 0.03522925415365187,
+          "mass": 8.93825438096464,
+          "u0": 8.0,
+          "v0": 2.0,
+          "kappa": 500000.0,
+          "ic_center": [
+            30.0,
+            110.0
+          ],
+          "mass_drift_max": 3.9747287640040097e-16
+        },
+        "strong_wind": {
+          "centroid_x_m": 637428.7387018522,
+          "centroid_y_m": -230399.999958685,
+          "std_x_m": 917868.703263947,
+          "std_y_m": 152161.9165644722,
+          "max": 0.07516613153455806,
+          "mass": 8.938254380964644,
+          "u0": 20.0,
+          "v0": -4.0,
+          "kappa": 100000.0,
+          "ic_center": [
+            30.0,
+            110.0
+          ],
+          "mass_drift_max": 3.9747287640040097e-16
+        }
+      },
+      "deltas_vs_base": {
+        "shifted_ic": {
+          "centroid_shift_m": 301010.3978500234,
+          "std_x_ratio": 1.0211984529055496,
+          "std_y_ratio": 1.0000000000000004
+        },
+        "strong_diffusion": {
+          "centroid_shift_m": 1792.9484638608399,
+          "std_x_ratio": 1.5882328941493076,
+          "std_y_ratio": 1.8601860237654775
+        },
+        "strong_wind": {
+          "centroid_shift_m": 388121.207517969,
+          "std_x_ratio": 5.19861317899049,
+          "std_y_ratio": 1.1118394510231273
+        }
+      },
+      "pass": true
+    },
+    "cfl_rejection": {
+      "pass": true,
+      "detail": "物理参数不满足显式格式稳定性要求: CFL_x=1.429>1（减小 dt_s 或增大网格间距）"
+    }
+  },
+  "status": "PASS",
+  "finished_at": "2026-11-07T20:00:03"
+}

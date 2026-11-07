@@ -60,9 +60,14 @@ THRESHOLD_LIMITS: dict[str, tuple[float | None, float | None]] = {
     "gradient_rms_ratio_min": (0.0, None),
     "gradient_rms_ratio_max": (0.0, None),
     "t_range": (150.0, 400.0),
+    "t_min": (0.0, 400.0),
+    "t_max": (0.0, 400.0),
     "wind_max": (0.0, None),
     "tcwv_max": (0.0, None),
     "saturation_factor_max": (1.0, None),
+    "mass_drift_max": (0.0, 1.0),
+    "smoothness_ratio_max": (0.0, None),
+    "smoothness_factor_max": (0.0, None),
 }
 
 _GRID_NAMES = ("nx", "ny", "dx_m", "dy_m")
@@ -347,7 +352,9 @@ class PhysicsConfig(_StrictModel):
         dt = self.time.dt_s
         cfl_x = abs(self.parameters.u0) * dt / self.grid.dx_m
         cfl_y = abs(self.parameters.v0) * dt / self.grid.dy_m
-        diffusion = self.parameters.kappa * dt / min(self.grid.dx_m, self.grid.dy_m) ** 2
+        diffusion = self.parameters.kappa * dt * (
+            1.0 / self.grid.dx_m**2 + 1.0 / self.grid.dy_m**2
+        )
         problems = []
         if cfl_x > 1.0:
             problems.append(f"CFL_x=|u0|·dt/dx={cfl_x:.3f}>1（减小 dt_s 或增大 dx_m）")
@@ -355,7 +362,7 @@ class PhysicsConfig(_StrictModel):
             problems.append(f"CFL_y=|v0|·dt/dy={cfl_y:.3f}>1（减小 dt_s 或增大 dy_m）")
         if diffusion > 0.5:
             problems.append(
-                f"扩散稳定性 κ·dt/min(dx,dy)²={diffusion:.3f}>0.5（减小 dt_s 或增大网格间距）"
+                f"扩散稳定性 κ·dt·(1/dx²+1/dy²)={diffusion:.3f}>0.5（减小 dt_s 或增大网格间距）"
             )
         if problems:
             raise ValueError("physics 参数不满足显式格式稳定性要求: " + "; ".join(problems))

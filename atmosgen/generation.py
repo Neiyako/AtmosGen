@@ -128,6 +128,16 @@ def run_generation(
             seed=seed,
             spec=spec,
         )
+    if mode == "physics":
+        return _run_physics(
+            config,
+            config_path=config_path,
+            overwrite=overwrite,
+            run_dir=run_dir,
+            data_path=data_path,
+            seed=seed,
+            spec=spec,
+        )
     raise NotImplementedInPhase(mode, model_name, MODELS[model_name].phase)
 
 
@@ -215,6 +225,88 @@ def _run_statistical(
         contract=result.contract,
         status="ok",
         metadata=meta,
+    )
+
+
+def _run_physics(
+    config: GenerationConfigFile,
+    *,
+    config_path: str | Path | None,
+    overwrite: bool,
+    run_dir: Path,
+    data_path: Path,
+    seed: int,
+    spec: Any,
+) -> RunOutcome:
+    """Mode 2: run the self-written advection-diffusion solver."""
+
+    from .generators.physics.advection_diffusion import PhysicsError
+
+    physics = config.physics
+    if physics is None:
+        raise GenerationError("mode=physics 需要 physics 段")
+    real: xr.Dataset | None = None
+    trained_from: dict[str, Any] | None = None
+    data_cfg = config.data
+    needs_real = physics.initial_condition.kind == "from_real"
+    if needs_real:
+        if data_cfg is None:
+            raise GenerationError("physics.initial_condition.kind=from_real 需要 data 段")
+        real_path = Path(data_cfg.input)
+        if not real_path.exists():
+            raise FileNotFoundError(f"data.input={real_path} 不存在；先运行 atmosgen ingest")
+        handle = open_source(real_path, chunks=None)
+        try:
+            real = select_subset(
+                handle,
+                variables=list(data_cfg.variables),
+                time_range=data_cfg.time_range,
+                levels=data_cfg.levels,
+                spatial_extent=data_cfg.spatial_extent,
+            ).load()
+        finally:
+            handle.close()
+        trained_from = _trained_from(real_path, real)
+
+    generator_cls = spec.factory()
+    generator = generator_cls(
+        config,
+        seed=seed,
+        config_path=str(config_path) if config_path else None,
+        config_sha256=config_sha256(config_path) if config_path else None,
+        trained_from=trained_from,
+    )
+    try:
+        generator.fit(real)
+        result = generator.sample()
+    except PhysicsError as exc:
+        raise GenerationError(str(exc)) from exc
+
+    written = save_canonical(
+        result.dataset,
+        data_path,
+        contract=result.contract,
+        format=config.output.format,
+        compression=config.output.compression.model_dump(),
+        overwrite=overwrite,
+    )
+    metadata = dict(result.metadata)
+    metadata.update(
+        {
+            "run_id": run_dir.name,
+            "mode": "physics",
+            "model": generator_cls.name,
+            "seed": seed,
+            "real_dataset": trained_from,
+        }
+    )
+    write_json(run_dir / "metadata.json", metadata)
+    return RunOutcome(
+        run_dir=run_dir,
+        data_path=written,
+        contract=result.contract,
+        status="ok",
+        metadata=metadata,
     )
 
 

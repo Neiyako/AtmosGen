@@ -137,12 +137,23 @@ def run_evaluation(
             "temporal": run_temporal_validation(real_dataset, synthetic, thresholds=thresholds),
             "spatial": run_spatial_validation(real_dataset, synthetic, thresholds=thresholds),
         }
-    # Physical validation is Phase 3 (plan §5.4). Materialising an explicit
-    # NOT_RUN block keeps "physical从未存在" distinguishable from "physical通过".
-    modules["physical"] = _not_run(
-        "physical 验证在 Phase 3 实现（计划 §5.4：硬约束/质量守恒/方程残差）；"
-        "Phase 2 的 evaluate 只覆盖 statistical/temporal/spatial"
-    )
+    # Physical validation (plan §5.4): hard constraints plus soft indicators on
+    # the synthetic dataset itself; needs no real reference, so it runs even
+    # without --real. physical_parameters (u0/v0/kappa/BC) come from the
+    # embedded contract so Mode 2 datasets get their mass-budget checks.
+    try:
+        from .validation.physical import run_physical_validation
+
+        modules["physical"] = run_physical_validation(
+            synthetic,
+            thresholds=thresholds,
+            physical_parameters=contract.get("physical_parameters"),
+            real=real_dataset,
+        )
+    except Exception as exc:  # noqa: BLE001 - a broken validator must not crash evaluate
+        modules["physical"] = _not_run(
+            f"physical 验证未运行（模块异常）: {type(exc).__name__}: {exc}"
+        )
 
     overall = report_mod.aggregate_status([block["status"] for block in modules.values()])
     quality: dict[str, Any] = {
@@ -169,8 +180,8 @@ def run_evaluation(
         "physical": modules["physical"],
         "overall_status": overall,
         "coverage": {
-            "implemented": ["statistical", "temporal", "spatial"],
-            "not_implemented": ["physical (Phase 3)"],
+            "implemented": ["statistical", "temporal", "spatial", "physical"],
+            "not_implemented": [],
         },
     }
 

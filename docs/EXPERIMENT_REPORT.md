@@ -78,6 +78,32 @@ NOT_RUN（`validation/temporal.py::timeseries_efficacy` 已实现、可显式调
 - 证据：`research/env/logs/p4_synthcity_install.log`、`research/env/logs/p4_synthcity_probe.{log,json}`
 - 依赖兼容性记录：见 `docs/DEPENDENCY_COMPATIBILITY.md` §Synthcity 时间盒结论（含两次失败与修复）
 
+## E2 物理参数/IC 敏感性（Phase 3 完成）
+
+求解器先通过解析/守恒/稳定性验证（`scripts/validate_solver_analytic.py`全 PASS，证据 `research/physics/solver_validation_report.json`）：
+
+| 验证 | 实测 | 阈值 |
+|---|---|---|
+| 纯扩散解析解 L2 误差（dx 20/10/5 km） | 1.84e-3 / 4.50e-4 / 1.12e-4，收敛阶 **2.032 / 2.008** | 记录制（理论二阶） |
+| 平流质心位移误差 | x **1.70%**（120 km 位移）、y 4.4e-5% | <2% |
+| 周期质量守恒 | 最大相对漂移 **2.86e-16**（/步同量级） | <1e-6/步 |
+| 最大 CFL（1.0）稳定性 | 100 步有限、峰值 0.984、无增长 | 无爆炸 |
+| 非法 CFL 拒绝 | CFL 1.429 → PhysicsError（报错含修复建议） | 必须拒绝 |
+
+> 过程修复：2D 扩散稳定性判据原写错（κ·dt/min(dx,dy)²≤0.5 允许每轴 0.4、总 0.8 → 细网格爆炸，先被收敛阶=-170 抓出），已改为 von Neumann 总和判据 κ·dt·(1/dx²+1/dy²)≤0.5（详见 PHASE3_REPORT §3）。
+
+Test C 参数敏感性（base：u0=8、v0=2、κ=1e5、σ=1.5°、中心 [30,110]，save 24 场）：
+
+| 场景 | 输出差异 vs base（可量化） |
+|---|---|
+| IC 中心 [32,112] | 质心位移 **301 010.4 m**（=平移距离，符合恒风平流的线性）；σ 比几乎不变 |
+| κ=5e5（×5） | σ_x 比 **1.588**、σ_y 比 **1.860**（扩散 σ∝√(2κt)） |
+| u0=20, v0=−4 | 质心位移 **388 121.2 m**（角位移=|Δv|·T），σ_x 比 5.199（风切变致展宽） |
+
+Mode 2 端到端 run：`output/physics_advection_diffusion_20261107-201137_42/`——Solver CFL_x=0.114、扩散数=0.068、mass 漂移 2.86e-16；`evaluate`（无 --real）→ `physical=PASS`（finite/c_nonneg/mass 全 PASS，equation_residual RMS **5.45e-07** INFO），statistical/temporal/spatial NOT_RUN（无真实同网格参考，不硬凑）。
+
+**接入 physical 验证发现（Phase 2 数据回评）**：统计模型 run 的 `saturation` FAIL（copula 32448 点中 **1066 点** q>1.1×q_sat，即 3.3% 超饱和组合）→ 这是 Phase 4 混合模式物理筛检（plan §4.3）的直接动机。
+
 ## E4 Sim-to-Real
 
 **NOT_RUN**：Phase 2 没有下游任务（无真实观测对照的预测任务），不硬凑指标；按计划 §8 标 NOT_RUN。

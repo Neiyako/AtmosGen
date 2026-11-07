@@ -222,9 +222,22 @@ def run_generate_command(*, config_path: Path, overwrite: bool = False) -> int:
             f"{(subset.get('latitude') or {}).get('n', '?')}×{(subset.get('longitude') or {}).get('n', '?')} 格点"
         )
     if samples:
+        if "rows_generated" in samples:
+            typer.echo(
+                f"  样本:        unit={samples.get('unit')} rows_generated={samples.get('rows_generated')} "
+                f"(rows_requested={samples.get('rows_requested')})"
+            )
+        else:
+            typer.echo(
+                f"  场数:        unit={samples.get('unit')} fields={samples.get('fields')}"
+            )
+    diagnostics = meta.get("diagnostics") or {}
+    if diagnostics:
         typer.echo(
-            f"  样本:        unit={samples.get('unit')} rows_generated={samples.get('rows_generated')} "
-            f"(rows_requested={samples.get('rows_requested')})"
+            f"  求解器:      CFL_x={diagnostics.get('cfl_x'):.3g} "
+            f"CFL_y={diagnostics.get('cfl_y'):.3g} "
+            f"扩散数={diagnostics.get('diffusion_number'):.3g} "
+            f"质量漂移={diagnostics.get('mass_drift_max'):.3e}"
         )
     if fit:
         typer.echo(f"  训练耗时:    {fit.get('elapsed_seconds')} s（fit 峰值 RSS {fit.get('peak_rss_mb')} MB）")

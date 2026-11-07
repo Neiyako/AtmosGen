@@ -22,6 +22,12 @@ def _module_available(module: str) -> tuple[bool, str]:
     return True, str(getattr(imported, "__version__", "unknown"))
 
 
+def _physics_factory() -> type:
+    from .physics.advection_diffusion import AdvectionDiffusionGenerator
+
+    return AdvectionDiffusionGenerator
+
+
 def _statistical_factory(model_name: str) -> Callable[[], type]:
     """Lazy factory: importing sdv happens on first use, not import time."""
 
@@ -116,7 +122,8 @@ MODELS: dict[str, ModelSpec] = {
         description="自研最小 2D 平流–扩散显式求解器（迎风 + 中心扩散）",
         phase=3,
         dependency_problems=lambda: [],
-        implemented=False,
+        implemented=True,
+        factory=_physics_factory,
     ),
     "hybrid": ModelSpec(
         name="hybrid",

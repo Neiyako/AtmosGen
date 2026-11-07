@@ -79,15 +79,15 @@ def test_ingest_rejects_generation_config(tmp_path):
 
 
 def test_generate_unimplemented_mode_exits_3(tmp_path):
-    config = tmp_path / "physics.yaml"
+    """hybrid stays NOT_RUN (exit 3) until Phase 4; physics is implemented now."""
+
+    config = tmp_path / "hybrid.yaml"
     config.write_text(
         "\n".join(
             [
-                "project: {name: physics_cli, seed: 1}",
-                "generation:",
-                "  mode: physics",
-                "  model: advection_diffusion",
-                "  samples: {unit: field, fields: 5}",
+                "project: {name: hybrid_cli, seed: 1}",
+                "data: {input: ./nope.nc, variables: [t, q, u, v, tcwv]}",
+                "generation: {mode: hybrid, model: hybrid, samples: {unit: field, fields: 5}}",
                 "physics:",
                 "  equation: advection_diffusion",
                 "  grid: {nx: 32, ny: 32, dx_m: 42000.0, dy_m: 42000.0}",
@@ -95,6 +95,10 @@ def test_generate_unimplemented_mode_exits_3(tmp_path):
                 "  parameters: {u0: 8.0, v0: 2.0, kappa: 100000.0}",
                 "  initial_condition: {kind: gaussian_plume, center: [30.0, 110.0], sigma_deg: 1.5}",
                 "  boundary_condition: {kind: periodic}",
+                "hybrid:",
+                "  physics_component: {enabled: true, output_variable: tcwv}",
+                "  statistical_component: {model: gaussian_copula, trained_on: [real]}",
+                "  screening: {hard_constraints: true}",
             ]
         ),
         encoding="utf-8",
@@ -102,6 +106,37 @@ def test_generate_unimplemented_mode_exits_3(tmp_path):
     result = runner.invoke(app, ["generate", "--config", str(config)])
     assert result.exit_code == 3
     assert "NOT_RUN" in result.stdout
+
+
+def test_generate_physics_end_to_end(tmp_path, write_yaml):
+    """Mode 2: solver -> canonical NetCDF + contract + metadata (no real data needed)."""
+
+    config = write_yaml(
+        "physics.yaml",
+        {
+            "project": {"name": "physics_e2e", "seed": 3, "output_dir": str(tmp_path / "output")},
+            "generation": {
+                "mode": "physics",
+                "model": "advection_diffusion",
+                "samples": {"unit": "field", "fields": 5},
+            },
+            "physics": {
+                "equation": "advection_diffusion",
+                "grid": {"nx": 48, "ny": 48, "dx_m": 42000.0, "dy_m": 42000.0},
+                "time": {"dt_s": 600.0, "steps": 32},
+                "parameters": {"u0": 8.0, "v0": 2.0, "kappa": 100000.0},
+                "initial_condition": {"kind": "gaussian_plume", "center": [30.0, 110.0], "sigma_deg": 1.5},
+                "boundary_condition": {"kind": "periodic"},
+            },
+            "output": {"format": "netcdf", "directory": str(tmp_path / "output")},
+        },
+    )
+    result = runner.invoke(app, ["generate", "--config", str(config)])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    assert "CFL_x" in result.stdout and "质量漂移" in result.stdout
+    (run_dir,) = [p for p in (tmp_path / "output").iterdir()]
+    for name in ("data.nc", "contract.json", "metadata.json", "environment.json", "config.yaml"):
+        assert (run_dir / name).exists(), f"missing {name}"
 
 
 def test_help_and_commands_still_required_args():

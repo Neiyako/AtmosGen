@@ -22,6 +22,7 @@
     }
 """
 
+from .physical import run_physical_validation
 from .report import aggregate_status, render_markdown
 from .spatial import run_spatial_validation
 from .statistical import run_statistical_validation
@@ -31,6 +32,7 @@ __all__ = [
     "aggregate_status",
     "timeseries_efficacy",
     "render_markdown",
+    "run_physical_validation",
     "run_spatial_validation",
     "run_statistical_validation",
     "run_temporal_validation",

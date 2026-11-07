@@ -30,7 +30,7 @@ import xarray as xr
 
 from . import __version__
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 CONTRACT_ATTR = "atmosgen:contract"
 CONTRACT_FILENAME = "contract.json"
 
@@ -87,6 +87,8 @@ _VAR_SPECS: tuple[VariableSpec, ...] = (
     VariableSpec("crwc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific rain water content", "specific_rain_water_content", "cloud"),
     VariableSpec("cswc", ("time", "level", "latitude", "longitude"), "kg kg**-1", "Specific snow water content", "specific_snow_water_content", "cloud"),
     VariableSpec("tcwv", ("time", "latitude", "longitude"), "kg m**-2", "Total column water vapour", "atmosphere_mass_content_of_water_vapor", "column"),
+    # Physics (Mode 2) passive-tracer field: schema 1.1 additive variable.
+    VariableSpec("c", ("time", "latitude", "longitude"), "1", "Tracer concentration (advection-diffusion)", None, "tracer"),
 )
 
 VAR_SPECS: dict[str, VariableSpec] = {spec.name: spec for spec in _VAR_SPECS}
