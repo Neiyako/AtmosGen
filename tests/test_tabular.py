@@ -19,17 +19,25 @@ from conftest import build_small_dataset
 
 
 def test_roundtrip_reconstructs_fields_exactly():
-    ds = build_small_dataset(seed=3)
+    # 3 levels like production: 4D variables must be bit-exact, while the 3-D
+    # tcwv is recovered as a mean over the level axis and may differ by 1 ULP.
+    ds = build_small_dataset(seed=3, nlevel=3)
     X, names, meta = dataset_to_table(
         ds, variables=["t", "q", "u", "v", "tcwv"], covariates=["hour_sin", "level", "lat_norm", "lon_norm"]
     )
-    assert meta["rows_total"] == meta["rows"] == 3 * 2 * 3 * 4
+    assert meta["rows_total"] == meta["rows"] == 3 * 3 * 3 * 4
     assert meta["removed_nan_rows"] == 0
     rebuilt = rows_to_fields(X, meta)
-    for name in ["t", "q", "u", "v", "tcwv"]:
+    for name in ["t", "q", "u", "v"]:
         np.testing.assert_allclose(
             np.asarray(rebuilt[name].values), np.asarray(ds[name].values), rtol=0, atol=0
         )
+    np.testing.assert_allclose(
+        np.asarray(rebuilt["tcwv"].values),
+        np.asarray(ds["tcwv"].values),
+        rtol=0,
+        atol=1e-12,  # 1 ULP scale: tcwv is averaged over the level axis
+    )
 
 
 def test_row_order_matches_raster_semantics():

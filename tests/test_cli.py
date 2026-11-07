@@ -156,10 +156,12 @@ def test_generate_statistical_end_to_end(tmp_path, write_yaml):
     data_path = run_dir / "data.nc"
 
     evaluate_result = runner.invoke(
-        app, ["evaluate", "--input", str(data_path), "--real", str(real_path)]
+        app,
+        ["evaluate", "--input", str(data_path), "--real", str(real_path), "--fail-on", "never"],
     )
     assert evaluate_result.exit_code == 0, evaluate_result.stdout + evaluate_result.stderr
     assert "overall_status" in evaluate_result.stdout
+    assert "physical" in evaluate_result.stdout
     assert (run_dir / "quality_report.json").exists()
     assert (run_dir / "quality_report.md").exists()
 
@@ -168,6 +170,49 @@ def test_generate_statistical_end_to_end(tmp_path, write_yaml):
     )
     assert report_result.exit_code == 0
     assert "质量验证报告" in report_result.stdout or "overall_status" in report_result.stdout.lower()
+
+
+def test_evaluate_fail_status_exits_4(tmp_path, write_yaml):
+    """Quality FAIL must be visible in the exit code (unless --fail-on never)."""
+
+    pytest.importorskip("sdv")
+    from conftest import build_small_dataset, make_contract
+
+    from atmosgen.data.io import save_canonical
+
+    real_path = save_canonical(
+        build_small_dataset(seed=6), tmp_path / "real.nc",
+        contract=make_contract(build_small_dataset(seed=6)),
+    )
+    config = write_yaml(
+        "gen.yaml",
+        {
+            "project": {"name": "cli_gate", "seed": 7, "output_dir": str(tmp_path / "output")},
+            "data": {"input": str(real_path), "variables": ["t", "q", "u", "v", "tcwv"]},
+            "generation": {
+                "mode": "statistical",
+                "model": "gaussian_copula",
+                "samples": {"unit": "cell_time", "rows": 128},
+                "covariates": ["level"],
+            },
+            "output": {"format": "netcdf", "directory": str(tmp_path / "output")},
+        },
+    )
+    generated = runner.invoke(app, ["generate", "--config", str(config)])
+    assert generated.exit_code == 0, generated.stdout + generated.stderr
+    data_path = next((tmp_path / "output").iterdir()) / "data.nc"
+    failure = runner.invoke(
+        app, ["evaluate", "--input", str(data_path), "--real", str(real_path)]
+    )
+    # tiny fixtures are expected to FAIL the spatial/temporal thresholds
+    assert failure.exit_code == 4, failure.stdout + failure.stderr
+    assert "exit 4" in (failure.stdout + failure.stderr)
+    relaxed = runner.invoke(
+        app,
+        ["evaluate", "--input", str(data_path), "--real", str(real_path),
+         "--fail-on", "never", "--overwrite"],
+    )
+    assert relaxed.exit_code == 0, relaxed.stdout + relaxed.stderr
 
 
 def test_generate_statistical_reuses_config_snapshot(tmp_path, write_yaml):

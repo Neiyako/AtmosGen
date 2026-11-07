@@ -65,6 +65,7 @@ _SECTION_TITLES = {
     "statistical": "统计分布一致性（statistical）",
     "temporal": "时间连续性（temporal）",
     "spatial": "空间连续性（spatial）",
+    "physical": "物理合理性（physical）",
 }
 
 
@@ -83,7 +84,7 @@ def render_markdown(report: dict) -> str:
             prefix = key.replace("_", " ").capitalize()
             lines.append(f"- **{prefix}**: {meta[key]}")
 
-    section_names = [s for s in ("statistical", "temporal", "spatial") if s in report]
+    section_names = [s for s in ("statistical", "temporal", "spatial", "physical") if s in report]
     overall = aggregate_status(
         report[s]["status"] for s in section_names if isinstance(report[s], dict)
     )

@@ -247,6 +247,11 @@ def command_evaluate(
     out: Optional[Path] = typer.Option(None, "--out", help="报告输出目录（默认与 --input 同目录）"),
     config: Optional[Path] = typer.Option(None, "--config", help="generation 配置文件（提供 thresholds_overrides）"),
     overwrite: bool = typer.Option(False, "--overwrite", help="覆盖已存在的 quality_report.json"),
+    fail_on: str = typer.Option(
+        "fail",
+        "--fail-on",
+        help="退出码策略：fail=质量 FAIL 时退出 4；never=只写报告总是退出 0",
+    ),
 ) -> None:
     """质量评价（statistical / temporal / spatial；physical 在 Phase 3）。"""
 
@@ -279,13 +284,21 @@ def command_evaluate(
         _echo_error(f"evaluate 运行失败（未预期异常）: {type(exc).__name__}: {exc}")
         raise typer.Exit(code=EXIT_RUNTIME_ERROR)
     typer.echo(f"overall_status: {quality['overall_status']}")
-    for name in ("statistical", "temporal", "spatial"):
+    for name in ("statistical", "temporal", "spatial", "physical"):
         block = quality.get(name) or {}
         typer.echo(f"  {name:<12} {block.get('status', 'MISSING')}")
     for path_key in ("json", "md"):
         typer.echo(f"  {path_key}: {quality['report_paths'][path_key]}")
+    if quality.get("figures"):
+        typer.echo(f"  figures:     {len(quality['figures'])} 个（{quality['figures'][0]} …）")
     if quality["overall_status"] != "PASS":
         typer.echo("说明：状态与阈值明细见 quality_report.json / quality_report.md")
+    if fail_on not in {"fail", "never"}:
+        _echo_error(f"--fail-on 必须是 fail|never，得到 {fail_on!r}")
+        raise typer.Exit(code=EXIT_USER_ERROR)
+    if fail_on == "fail" and quality["overall_status"] == "FAIL":
+        typer.echo("exit 4: 质量状态 FAIL（--fail-on never 可改为始终退出 0）", err=True)
+        raise typer.Exit(code=EXIT_RUNTIME_ERROR)
 
 
 @app.command("report")

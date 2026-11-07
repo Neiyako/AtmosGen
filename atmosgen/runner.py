@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import platform
 import random
@@ -72,12 +73,43 @@ def snapshot_config(config_path: str | Path, run_dir: str | Path) -> Path:
     return target
 
 
+def _sanitise_json(value: Any) -> Any:
+    """Replace NaN/Inf with null so the output is RFC-8259 valid JSON."""
+
+    if isinstance(value, Mapping):
+        return {key: _sanitise_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_sanitise_json(item) for item in value]
+    if isinstance(value, (np.floating, float)):
+        numeric = float(value)
+        return numeric if math.isfinite(numeric) else None
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    if isinstance(value, np.ndarray):
+        return _sanitise_json(value.tolist())
+    return value
+
+
 def write_json(path: str | Path, payload: Mapping[str, Any]) -> Path:
-    """Write indented UTF-8 JSON, creating parent directories."""
+    """Write indented UTF-8 JSON, creating parent directories.
+
+    Non-finite floats (NaN/Inf) are written as ``null``: bare ``NaN`` is not
+    valid JSON and breaks strict parsers (Node/Go/Rust/serde).
+    """
 
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=_json_default), encoding="utf-8")
+    sanitised = _sanitise_json(payload)
+    target.write_text(
+        json.dumps(
+            sanitised,
+            ensure_ascii=False,
+            indent=2,
+            default=_json_default,
+            allow_nan=False,
+        ),
+        encoding="utf-8",
+    )
     return target
 
 

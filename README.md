@@ -15,7 +15,7 @@
 | Phase 4 | 混合生成（物理基底 + 条件生成 + 物理筛检） | ⏳ 待实施 |
 | Phase 5 | Benchmark、四类质量报告、可复现性与交付 | ⏳ 待实施 |
 
-**Phase 1–2 已交付可运行链路**：`validate-config` / `ingest` / `list-models` / `generate` / `evaluate` / `report` 全部可用。统计生成（SDV gaussian_copula/ctgan/tvae，level_wise 方案）已在真实 ERA5 切片上产出数据并通过 Test B；实测统计边缘分布 7/8 指标 PASS，**时序/空间指标 FAIL 属计划预设（统计模型不建模时空结构，见 PHASE2_REPORT §4）**。`physics` / `hybrid` 仍按阶段报 `NOT_RUN`（退出码 3）。验收以 `docs/PHASE1_REPORT.md`、`docs/PHASE2_REPORT.md` 的数值证据为准。
+**Phase 1–2 已交付可运行链路**：`validate-config` / `ingest` / `list-models` / `generate` / `evaluate` / `report` 全部可用。统计生成（SDV gaussian_copula/ctgan/tvae，level_wise 方案）已在真实 ERA5 切片上产出数据并通过 Test B；实测统计边缘分布 7/8 指标 PASS，**时序/空间指标 FAIL 属计划预设（统计模型不建模时空结构，见 PHASE2_REPORT §4）**；`quality_report.{json,md}` 含 3 张图和 `physical: NOT_RUN` 显式块。`physics` / `hybrid` 仍按阶段报 `NOT_RUN`（退出码 3）。验收以 `docs/PHASE1_REPORT.md`、`docs/PHASE2_REPORT.md` 的数值证据为准。
 
 ## 先读这些文档
 
@@ -44,7 +44,7 @@ conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
 pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令
-pytest -q                        # 95 个用例（Phase 1+2）
+pytest -q                        # 96 个用例（Phase 1+2）
 ```
 
 版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 独立环境已实测（Python 3.10 + torch 2.2.x + numpy<2，需 pin `scipy==1.11.4`、`opacus==1.4.1`），结论见 [docs/DEPENDENCY_COMPATIBILITY.md](docs/DEPENDENCY_COMPATIBILITY.md) §10。
@@ -57,11 +57,11 @@ atmosgen validate-config configs/demo.yaml                # ✅ Phase 1（结构
 atmosgen ingest     --config configs/era5_ingest.yaml     # ✅ Phase 1（Test A）
 atmosgen list-models                                      # ✅ Phase 1
 atmosgen generate   --config configs/stat_gaussian_copula.yaml   # ✅ Phase 2（statistical；physics/hybrid 仍 exit 3）
-atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc   # ✅ Phase 2
+atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc --fail-on never   # ✅ Phase 2
 atmosgen report     --input output/<run>/quality_report.json --format md               # ✅ Phase 2
 ```
 
-退出码约定：0 成功；2 配置/用法错误；3 当前阶段未实现（NOT_RUN）；4 运行期失败。
+退出码约定：0 成功；2 配置/用法错误；3 当前阶段未实现（NOT_RUN）；4 运行期失败或 `evaluate` 质量 FAIL（默认 `--fail-on fail`；要 CI 放行用 `--fail-on never`）。
 
 ## 真实数据
 

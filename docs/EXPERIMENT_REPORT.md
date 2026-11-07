@@ -35,7 +35,7 @@ seed=42、按层训练（每层一个模型，见 `docs/PHASE2_REPORT.md` 偏差
 | std_ratio（范围） | 0.75–1.25 | **1.0934** ✅ | 0.5850 ❌ | 0.5576 ❌ |
 | quantile_rmse（越低越好） | ≤0.10 | **0.0552** ✅ | 0.1668 ❌ | 0.1627 ❌ |
 | corr_frobenius（越低越好） | ≤0.25 | 1.1121 ❌ | 1.2960 ❌ | 1.1281 ❌ |
-| extreme_ratio（范围） | 0.5–2.0 | 1.1026 ✅ | 1.1665 ✅ | 1.2744 ✅ |
+| extreme_ratio（范围） | 0.5–2.0 | 1.1026 ✅ | 1.1576 ✅ | 1.0621 ✅ |
 
 **统计模块结论**：gaussian_copula **7/8 项 PASS**，仅 `corr_frobenius` FAIL；CTGAN 3/8 项 PASS；
 TVAE 4/8 项 PASS。整体状态按计划 §5.5 "最低状态" 聚合为 FAIL（非 bug，见分析 §3）。

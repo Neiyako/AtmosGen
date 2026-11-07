@@ -14,7 +14,7 @@
 
 | 验收项 | 状态 | 证据 |
 |---|---|---|
-| 场↔表转换可逆（允许数值精度误差） | ✅ PASS | `tests/test_tabular.py`：逐值精确往返（t/q/u/v + 3D tcwv），行序 (time,level,lat,lon) 语义测试；`tests/test_selection.py` |
+| 场↔表转换可逆（允许数值精度误差） | ✅ PASS | `tests/test_tabular.py`：t/q/u/v 逐值精确；3D tcwv 按层平均重建、1 ULP 内（atol=1e-12）；行序 (time,level,lat,lon) 语义测试；`tests/test_selection.py` |
 | SDV Adapter（≥2 模型；条件生成） | ✅ PASS | `atmosgen/generators/sdv_adapter.py` 三模型；`tests/test_sdv_adapter.py` 7 用例；条件生成入口 `sample_conditional()` 已实现（Phase 4 用），其局限见偏差 P1 |
 | 统计质量（sdmetrics + 自定义） | ✅ PASS | `atmosgen/validation/statistical.py` 8 指标；真实数据实测见 §3 |
 | 时序/空间质量 v1 | ✅ PASS | `temporal.py` 5 指标 + `timeseries_efficacy`（默认 NOT_RUN）；`spatial.py` 6 指标；实测见 §4 |
@@ -23,7 +23,7 @@
 | Synthcity 隔离环境探测（时间盒） | ✅ PASS（集成）/ ⚠️ 质量 NOT_RUN | `research/env/logs/p4_synthcity_*.{log,json}`；见 §6 |
 | **Test B**：生成→保存→重读一致 | ✅ PASS | `tests/test_sdv_adapter.py::test_test_b_roundtrip_save_and_reread`（逐值 `assert_array_equal` + 契约重读）；真实数据产物 `output/statistical_*/data.nc` + `contract.json` 侧车 |
 
-Agent/模块测试规模：`tests/` 共 **95 passed / 10.5 s**（契约 10、IO 9、配置 14、ingest 8、registry 5、CLI 11、tabular 9、selection 4、SDV adapter 7、validation 18）。
+Agent/模块测试规模：`tests/` 共 **96 passed / 12.0 s**（契约 10、IO 9、配置 14、ingest 8、registry 5、CLI 12、tabular 9、selection 4、SDV adapter 7、validation 18）。
 
 ## 3. 统计质量（真实 vs 生成，阈值见计划 §5.1）
 
@@ -36,10 +36,11 @@ Agent/模块测试规模：`tests/` 共 **95 passed / 10.5 s**（契约 10、IO 
 | std_ratio | 0.75–1.25 | **1.093** ✅ | 0.585 ❌ | 0.558 ❌ |
 | quantile_rmse ↓ | ≤0.10 | **0.055** ✅ | 0.167 ❌ | 0.163 ❌ |
 | corr_frobenius ↓ | ≤0.25 | 1.112 ❌ | 1.296 ❌ | 1.128 ❌ |
-| extreme_ratio | 0.5–2.0 | 1.103 ✅ | 1.167 ✅ | 1.274 ✅ |
+| extreme_ratio | 0.5–2.0 | 1.103 ✅ | 1.158 ✅ | 1.062 ✅ |
 
 - `gaussian_copula`：**7/8 PASS**；`corr_frobenius` 三模型均 FAIL——该指标比较跨层相关矩阵，而按层训练在构造上不建模层间相关（见 P1）。
 - 统计模块整体状态按计划 §5.5「最低状态」聚合为 FAIL；这是阈值口径的如实结果，不隐藏。
+- 各 run 的 `quality_report.md` 现已包含计划 §5.5 要求的图（`figures/distributions.png`、`figures/acf_spectrum.png`、`figures/variogram.png`，每 run 3 张）。
 
 ## 4. 时序 / 空间质量（计划 §5.2 / §5.3）
 
@@ -83,6 +84,8 @@ Agent/模块测试规模：`tests/` 共 **95 passed / 10.5 s**（契约 10、IO 
 | P5 | 总体质量状态 | 统计/时序/空间全部按实测报 FAIL（copula 统计 7/8 PASS，模块仍按最低项聚合 FAIL） | 计划 §5.5 聚合口径 + X2 预设；不因"大部分 PASS"就改总体状态 |
 | P6 | 变量集 | 仅 t/q/u/v/tcwv；clwc/ciwc 等云水变量未参与 | 主数据集无云水（Phase 1 结论）；hybrid（Phase 4）需先建合并数据集 |
 | P7 | `samples.rows` 语义 | 作为下限：实际生成量 = max(配置 rows, 目标网格行数)，契约同时记录 rows_requested / rows_generated | 重建完整场必须填满网格；避免"20000 样本 = 20000 场"的语义错误（计划 D12） |
+| P8 | `evaluate` 退出码 | 新增 `--fail-on fail`（默认）：质量 FAIL → 退出 4；`--fail-on never` → 总是 0 | 计划 §6.2 要求"退出码 0/非 0 语义明确"；独立复核 D1 指出 FAIL 时退出 0 会让 CI 放行 |
+| P9 | 报告互操作与覆盖 | ① 非有限浮点写为 JSON `null`（严格解析器可读；`NaN` 非法）② `physical` 显式 NOT_RUN 块（可区分"未实现"与"通过"）③ 每 run 3 张图 | 独立复核 D2/D4/D6；计划 §5.5 要求"四类最低状态 + NOT_RUN 显著列出"、md 含图 |
 
 ## 8. 未完成 / NOT_RUN（如实标注）
 
@@ -103,6 +106,21 @@ Agent/模块测试规模：`tests/` 共 **95 passed / 10.5 s**（契约 10、IO 
 5. `atmosgen generate --config configs/physics_advection.yaml` 端到端（替换当前 NOT_RUN 分支）+ Test C（改 IC/参数 → 输出可测差异）
 6. 更新 EXPERIMENT_REPORT E2 / README / 新增 PHASE3_REPORT
 
+## 11. 独立验收（子代理复核）与修复记录
+
+Phase 2 完成后由独立子代理（只读复核，不采信仓库文字）复核，首轮判定 **CONDITIONAL_PASS**：核心主张（96 passed、Test B、契约字段、level_wise 逐层放置、copula 指标与资源数值）全部现场复现成立；指出 3 个中级缺陷与 3 个次要问题。本轮已全部修复并回归：
+
+| ID | 问题 | 修复 | 证据 |
+|---|---|---|---|
+| D1 | `evaluate` 在 `overall_status=FAIL` 时仍退出 0，与 README/计划退出码约定矛盾 | 新增 `--fail-on fail`（默认）：FAIL → 退出 4；`--fail-on never` → 0 | `atmosgen evaluate …` → `DEFAULT_FAIL_ON_EXIT=4`；`--fail-on never` → 0；单测 `test_evaluate_fail_status_exits_4` |
+| D2 | `quality_report.json` 含裸 `NaN`（来自 `timeseries_efficacy.value`），不是合法 JSON | `runner.write_json` 递归把 NaN/Inf 转 `null`，并 `allow_nan=False` 强制校验 | 严格 JSON 解析（`parse_constant` 拦截）对 3 个 run 全部 OK |
+| D3 | §3 表 ctgan/tvae 的 `extreme_ratio` 数字与产物不符（写作 1.167/1.274，实测 1.1576/1.0621） | 按实测修正 §3 与 EXPERIMENT_REPORT 表；全表 24 格重新核对 24/24 一致 | `quality_report.json` 的 `statistical.metrics.extreme_ratio.value` |
+| D4 | 计划 §5.5 要求 md 含图，原实现无图 | `evaluation._write_figures()`：分布对比 / ACF+功率谱 / 半变异函数，每 run 3 张 PNG，md 追加图链接 | 3 个 run 的 `figures/` 与 `quality_report.md` 实测 |
+| D5 | 场↔表往返单测用 nlevel=2，"精确"结论只在二进制可除尽时成立 | 测试改用 nlevel=3（生产同构）：t/q/u/v 严格相等，tcwv `atol=1e-12` | `tests/test_tabular.py::test_roundtrip_reconstructs_fields_exactly` |
+| D6 | 报告只有 three 类模块，`physical` 无 NOT_RUN 块，"未实现"与"通过"无法区分 | `evaluation` 显式写入 `physical: NOT_RUN` 块 + `coverage` 字段；renderer 支持 physical 小节 | `quality_report.json` 的 `physical.status=NOT_RUN`、`coverage.not_implemented` |
+
+复核同时确认无缺陷的项：`aggregate_status` 不会把 CONDITIONAL_PASS/NOT_RUN 升级为 PASS（12 组探针 12/12 符合规格）；evaluate 重跑与原始报告逐键一致（仅 `meta.environment.timestamp` 不同）。
+
 ## 10. 复现命令
 
 ```bash
@@ -114,7 +132,7 @@ atmosgen generate --config configs/stat_gaussian_copula.yaml
 atmosgen generate --config configs/stat_ctgan.yaml
 atmosgen generate --config configs/stat_tvae.yaml
 for run in output/statistical_*; do
-  atmosgen evaluate --input "$run/data.nc" --real data/processed/era5_local.nc
+  atmosgen evaluate --input "$run/data.nc" --real data/processed/era5_local.nc --overwrite --fail-on never
   atmosgen report --input "$run/quality_report.json" --format md --out "$run/quality_report_rendered.md"
 done
 pytest -q
