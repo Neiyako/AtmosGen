@@ -10,7 +10,7 @@ project:
 data:
   input: ./data/processed/era5_local.nc
   format: auto                     # auto | netcdf | zarr
-  variables: [t, q, u, v, clwc]
+  variables: [t, q, u, v, tcwv]   # Phase 1 实际可得：t/q/u/v + 派生 tcwv（clwc/ciwc 在云水样本中）
   chunks: {time: 24, latitude: 50, longitude: 50}
   # 可选：时间/层/空间子集（不填 = 全量）
   # time_range: ["2020-01-01T00", "2020-01-02T18"]

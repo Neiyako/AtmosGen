@@ -4,26 +4,28 @@
 
 > 本项目不重新实现生成算法，而是整合成熟开源项目（SDV / Synthcity / SDGym / PDEBench / RealPDEBench），AtmosGen 自己只负责：数据契约与 IO、适配层、任务执行、统一保存、质量验证与报告。
 
-## 当前状态（2026-11-06）
+## 当前状态（2026-11-07）
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
-| **Phase 0** | 五个第三方项目技术审查、复用矩阵、依赖兼容性、实施计划 | ✅ **已完成**（本文档所在提交） |
-| Phase 1 | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ⏳ 待实施 |
+| **Phase 0** | 五个第三方项目技术审查、复用矩阵、依赖兼容性、实施计划 | ✅ **已完成** |
+| **Phase 1** | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ✅ **已完成**（2026-11-07，见 [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md)） |
 | Phase 2 | 统计生成（SDV）+ 统计/时序/空间评价 | ⏳ 待实施 |
 | Phase 3 | 物理仿真（2D advection–diffusion + 解析解验证） | ⏳ 待实施 |
 | Phase 4 | 混合生成（物理基底 + 条件生成 + 物理筛检） | ⏳ 待实施 |
 | Phase 5 | Benchmark、四类质量报告、可复现性与交付 | ⏳ 待实施 |
 
-**当前仓库只有 Phase 0 的计划与审计材料，还没有 `atmosgen` 包可运行。** README 中的命令是**目标接口**（Phase 1 起逐步实现），不要当成已可用。
+**Phase 1 已交付可运行骨架**：`pip install -e .` 后 `atmosgen --version` / `validate-config` / `ingest` / `list-models` 可用，真实 ERA5 切片已落到 `data/processed/era5_local.nc`（含契约与 Test A 报告）。
+**`generate` / `evaluate` / `report` 尚未实现**：CLI 会明确以退出码 3 报 `NOT_RUN`（Phase 2 起实现），不会产出占位数据。验收以 `docs/PHASE1_REPORT.md` 的数值证据为准。
 
-## 先读这四份文档
+## 先读这六份文档
 
 1. [docs/THIRD_PARTY_AUDIT.md](docs/THIRD_PARTY_AUDIT.md) — 五个项目到底能不能用、许可证、API、数据源实测
 2. [docs/REUSE_MATRIX.md](docs/REUSE_MATRIX.md) — 每项能力复用谁、什么级别、不做什么
 3. [docs/DEPENDENCY_COMPATIBILITY.md](docs/DEPENDENCY_COMPATIBILITY.md) — 本机 8 GB / arm64 下的真实环境结论
 4. [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — **实施计划（Phase 1–5 的任务、验收、测试 A–F）**
 5. [docs/DATA_SCHEMA.md](docs/DATA_SCHEMA.md) — 统一数据契约与 14 个必需元数据字段
+6. [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md) — **Phase 1 实际结果与 Test A 数值证据（含未完成项）**
 
 Phase 0 原始证据在 `research/`（环境探测日志、外部资料核对、五个仓库的只读浅克隆）。
 
@@ -40,19 +42,25 @@ conda create -y -n atmosgen python=3.11
 conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
+pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令（Phase 1 已可用）
+pytest -q                        # 46 个用例（Phase 1）
 ```
 
 版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 需要独立环境（Python 3.10 + torch 2.2.x + numpy<2），Phase 2 验证，见依赖文档。
 
-## 目标 CLI（Phase 1 起实现）
+## CLI 状态
 
 ```bash
-atmosgen validate-config configs/demo.yaml
-atmosgen ingest     --config configs/era5_ingest.yaml
-atmosgen generate   --config configs/stat_gaussian_copula.yaml
-atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc
-atmosgen report     --input output/<run>/data.nc --format md
+atmosgen --version                                        # ✅ Phase 1
+atmosgen validate-config configs/demo.yaml                # ✅ Phase 1（结构 + 数据级校验）
+atmosgen ingest     --config configs/era5_ingest.yaml     # ✅ Phase 1（Test A）
+atmosgen list-models                                      # ✅ Phase 1
+atmosgen generate   --config configs/stat_gaussian_copula.yaml   # ⏳ Phase 2，当前 NOT_RUN（退出码 3）
+atmosgen evaluate   --input output/<run>/data.nc --real data/processed/era5_local.nc   # ⏳ Phase 2
+atmosgen report     --input output/<run>/data.nc --format md                            # ⏳ Phase 2
 ```
+
+退出码约定：0 成功；2 配置/用法错误；3 当前阶段未实现（NOT_RUN）；4 运行期失败。
 
 ## 真实数据
 

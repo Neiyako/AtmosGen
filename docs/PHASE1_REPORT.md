@@ -1,0 +1,136 @@
+# Phase 1 报告 · 最小运行骨架（Test A）
+
+- 日期：2026-11-07
+- 依据：[`docs/IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) §7 Phase 1、§12 开工清单；[`docs/DATA_SCHEMA.md`](DATA_SCHEMA.md)
+- 结论：**Phase 1 完成（Test A PASS）**。`atmosgen` 包可安装、配置可校验、真实 ERA5 切片已规范化落地并带完整契约；`generate/evaluate/report` 按计划为显式 `NOT_RUN` 占位（非静默跳过）。
+
+---
+
+## 1. 一句话结果
+
+`atmosgen ingest --config configs/era5_ingest.yaml` 在 **7.1 s / 峰值内存 257.9 MB** 内读取本机 ERA5 归档 16 个 239.8 MB 源文件的小切片，产出 `data/processed/era5_local.nc`（12.97 MB，16 时次 × 3 层 × 101 × 101，t/q/u/v + 派生 tcwv），契约 14 项字段齐全，**源归档 16 个文件 size+mtime 全部未变**，读回校验一致。
+
+## 2. 环境（实测）
+
+| 项 | 实测值 |
+|---|---|
+| conda 环境 | `/opt/miniconda3/envs/atmosgen`，Python 3.11.15 |
+| 关键依赖 | numpy 2.4.6 / pandas 2.3.3 / xarray 2026.9.0 / netCDF4 1.7.5.1 / zarr 3.1.6 / pydantic 2.14.3 / typer 0.28.0 / sdv 2.1.0 / sdmetrics 0.33.0 / psutil 7.2.2 |
+| 安装方式 | `pip install -e . --no-deps`，`atmosgen --version` → `atmosgen 0.1.0` |
+| 真实数据卷 | `/Volumes/Untitled/2010/` 可用（2010-05-01…04 每天 t/q/u/v 四个文件齐全） |
+
+## 3. 交付物（Phase 1 计划项 → 实际文件）
+
+| 计划任务 | 产物 | 验收 |
+|---|---|---|
+| 项目结构 + pyproject + 安装 | `pyproject.toml`、`atmosgen/__init__.py`、`atmosgen/cli.py` | `atmosgen --version` → `atmosgen 0.1.0`；`pip install -e .` 成功 |
+| 配置模型 + 校验 | `atmosgen/config.py`（pydantic v2，generation/ingest 两类配置） | `atmosgen validate-config`：合法 6 例通过、非法 10 例被拒（见 §5） |
+| 数据契约 | `atmosgen/contract.py`（14 字段 + 内嵌 `atmosgen:contract` + `contract.json` 侧车） | 契约构造/校验/往返单测 9 个 |
+| 数据 IO | `atmosgen/data/io.py`（NetCDF4/zarr、原子写、raw 写保护、只读打开） | 往返一致；写 `data/raw` 被 `RawWriteError` 拒绝 |
+| 真实数据 ingest | `atmosgen/data/preprocess.py`、`scripts/ingest_local_era5.py` | **Test A PASS**（§4） |
+| registry + 生成器基类 | `atmosgen/generators/{base,registry}.py` | 5 个模型注册、`list-models` 输出；基类生命周期单测 |
+| 基础测试 | `tests/` 6 个文件 **46 个用例** | `pytest -q` → **46 passed in 3.60 s** |
+| 运行时/资源记账 | `atmosgen/runner.py`（run 目录、种子、elapsed/峰值 RSS、环境快照） | ingest run 目录含 `config.yaml` + `test_a_report.json` |
+
+代码规模：`atmosgen/` 12 个模块约 3 500 行（含文档字符串），`tests/` 约 750 行。
+
+## 4. Test A · 真实数据读取（证据）
+
+运行：`atmosgen ingest --config configs/era5_ingest.yaml` → `output/ingest_local_era5_20261107-112600_42/test_a_report.json`
+
+### 4.1 数据内容（读回值，非声明值）
+
+| 变量 | 维度 | 单位 | min | max | mean | NaN |
+|---|---|---|---|---|---|---|
+| t | (time, level, lat, lon) | K | 247.98 | 305.65 | 277.19 | 0 |
+| q | (time, level, lat, lon) | kg kg**-1 | 3.805e-07 | 0.01730 | 0.004151 | 0 |
+| u | (time, level, lat, lon) | m s**-1 | -19.54 | 42.38 | 6.450 | 0 |
+| v | (time, level, lat, lon) | m s**-1 | -24.46 | 25.76 | 0.599 | 0 |
+| tcwv（派生） | (time, lat, lon) | kg m**-2 | 3.979 | 65.62 | 28.08 | 0 |
+
+- 时间：`2010-05-01T00:00` … `2010-05-04T18:00`，16 步，步长 6 h（UTC，naive）
+- 层：pressure_level `[500, 700, 850]` hPa（源文件 37 层，单位 `millibars` 原样记录）
+- 纬度 101 点 20–45°N，步长 0.25°，**descending**（契约 `ascending: false`）；经度 101 点 100–125°E，步长 0.25°，ascending
+- 缺测：所有变量 NaN=0（契约 `missing_policy=preserve`，本次无缺测可保留）
+
+### 4.2 只读断言
+
+- 16 个源文件读取前后 **size + mtime 全部一致**（`readonly.all_unchanged = True`）
+- 239.8 MB 源文件未做全文件 SHA-256（>64 MiB 阈值），理由与跳过量写入报告 `sha256_skipped`；`data/processed` 与 `data/raw` 产物均有 SHA-256
+- 代码层面：`open_source()` 只有读路径；`save_canonical()` 默认拒绝写 `data/raw/`（单测 `test_refuses_to_write_under_raw_dir`），仅 ingest 传 `allow_raw=True`
+
+### 4.3 派生量 tcwv 的独立校核
+
+用**未经过 AtmosGen 代码**的独立脚本，从源归档 `q`（37 层）在同一时次/格点（2010-05-01T00, 30°N, 110°E）重算柱积分：
+
+```
+independent full-37-level column integral : 30.106841 kg m-2
+processed dataset tcwv (same point/time) : 30.106841 kg m-2
+relative difference                      : 2.36e-16
+```
+
+契约中 `source.derivation.tcwv` 与 `tcwv.atmosgen_derived` 均标注 derived，报告显著位置注明**不得当作 ERA5 官方 tcwv**。
+
+### 4.4 产物
+
+| 文件 | 大小 | SHA-256 |
+|---|---|---|
+| `data/raw/era5_local_slice.nc`（仅 t/q/u/v，无派生变量） | 11.96 MB | `8520a00f…1cad4db` |
+| `data/processed/era5_local.nc`（+ tcwv，内嵌契约） | 12.97 MB | `1724e341…81e335` |
+| `data/processed/contract.json`（侧车契约，含最终文件校验和） | 2.9 KB | — |
+
+`checks`：source_files_found / time_axis_consistency / readonly_sources_unchanged / contract_valid / roundtrip_readback / no_missing_values / derived_tcwv_valid 全 **PASS**。
+
+## 5. 测试与验收
+
+- `pytest -q`：**46 passed，3.60 s**（契约 9、IO 8、配置 11、ingest 4、registry 5、CLI 9）
+- `atmosgen validate-config` 正例：`demo.yaml`、`era5_ingest.yaml`、`era5_cloud_sample.yaml`、`physics_advection.yaml`、`stat_gaussian_copula.yaml`、`stat_ctgan.yaml` → PASS；负例：`samples.unit=field`+SDV、未知模型、physics 缺 physics 段、CFL 超限、阈值越界、local_era5 缺 root/date_range 等均被拒（退出码 2）
+- `atmosgen list-models`：5 个模型注册（3 统计 / 1 物理 / 1 混合），标注阶段与依赖状态
+- CLI 退出码：`--version`=0；`validate-config` 合法 0 / 非法 2；`ingest` 成功 0 / 失败 4 / 传错配置类型 2；`generate|evaluate|report`=3 且输出 `NOT_RUN`
+- NetCDF 与 **Zarr 往返**均通过（zarr 3.1.6 + xarray 2026.9）
+- `validate-config --no-check-data` 与数据级校验分离：数据未 ingest 时只报 warning，输入数据存在时拒绝变量/时间/层/范围不匹配
+
+## 6. 与计划的偏差 / 需要记录的决策
+
+| # | 事项 | 实际做法 | 理由 |
+|---|---|---|---|
+| P1 | 嵌入式契约的 `source.sha256` | 嵌 **null**；最终文件 SHA-256 写入 `contract.json` 侧车 + `test_a_report.json` | 文件校验和写进文件自身是自引用、无法成立；契约规范中侧车 `contract.json` 是权威副本 |
+| P2 | `data/raw` 写保护 | 默认拒绝；ingest 以 `allow_raw=True` 显式写入 | 满足"raw 只由 ingest 写一次 + 其它代码被拒"两条验收 |
+| P3 | 示例配置变量集 | `demo.yaml` / 两个 stat 配置改为 `[t,q,u,v,tcwv]`；`hybrid.yaml` 保留 `clwc/ciwc` 并在数据级校验如实 FAIL | Phase 1 实际数据集无云水；hybrid 需合并云水样本后才能通过数据级校验，不静默放宽 |
+| P4 | 源文件 SHA-256 | >64 MiB 只做 size+mtime 指纹 | 4 GB 全量摘要会主导 ingest 时间；跳过量逐文件写入报告，未标 PASS |
+| P5 | `samples.unit=field` + physics | 允许 | 物理模式按时间步=场数，语义正确；仅统计表格模型与该组合互斥 |
+| P6 | 两次运行的文件 SHA-256 | 不同（数值一致） | 契约 `metadata.created_at`/`elapsed_seconds` 每次不同，嵌入属性随写入变化；可复现性（数据与指标一致性）按 Test E 在 Phase 5 处理，Phase 1 不做 bitwise 承诺 |
+
+## 7. 未完成 / NOT_RUN（如实标注）
+
+- `crwc / cswc`：**NOT_RUN** —— 需 CDS 时间盒下载（计划 G2 补测），本机归档与现有 CDS 样本均无这两个变量
+- `data/processed/era5_local.nc` 的云水变量（clwc/ciwc）未合并：云水样本为青藏高原 2024-01-01 单时次，与东亚 2010-05 不同域，Phase 2 起单独小数据集验证，不做静默拼接
+- `generate / evaluate / report`：**NOT_RUN**（Phase 2–4 实现），CLI 明确以退出码 3 报告，不产生占位数据
+- 全文件 SHA-256（239.8 MB × 16）：**NOT_RUN**（见 P4）
+- Phase 2–5 全部未开始
+
+## 8. 下一步（Phase 2 开工清单）
+
+1. `data/tabular.py`：场 ↔ 表格（cells × time 行）双向转换 + 协变量（hour/level/lat_norm/lon_norm），用真实数据集验证可逆性
+2. `generators/sdv_adapter.py`：GaussianCopula / CTGAN / TVAE 三模型 fit→sample→save，`--overwrite` 语义与 run 目录接入
+3. `validation/statistical.py`（sdmetrics QualityReport + 自研 KS/矩/分位数/相关距离）与 `validation/{temporal,spatial}.py` v1
+4. `atmosgen generate` / `evaluate` 端到端；产出 `output/stat_*/data.nc`、`contract.json`、`quality_report.{json,md}`
+5. Synthcity 隔离环境时间盒探测（PASS 或 NOT_RUN + 日志证据）
+6. E1 模型对比实验（质量分 / 训练时长 / 峰值内存）写入 `docs/EXPERIMENT_REPORT.md` 初稿
+
+## 9. 复现命令
+
+```bash
+conda activate atmosgen
+cd "Atmospheric Data Generation"
+pip install -e . --no-deps
+
+atmosgen --version
+atmosgen validate-config configs/demo.yaml
+atmosgen validate-config configs/era5_ingest.yaml
+atmosgen ingest --config configs/era5_ingest.yaml --overwrite
+atmosgen list-models
+pytest -q
+```
+
+> 说明：`data/processed/*.nc`、`data/raw/*.nc`、`output/` 按 `.gitignore` 不入库；Test A 的完整数值证据在 `output/ingest_local_era5_*/test_a_report.json`（重新运行 ingest 可重建）。

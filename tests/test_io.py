@@ -1,0 +1,107 @@
+"""Canonical NetCDF/Zarr IO, raw-data write guard and read-only sources."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+import xarray as xr
+
+from atmosgen.contract import CONTRACT_ATTR, ContractError, read_contract
+from atmosgen.data import io
+from atmosgen.data.io import (
+    RawWriteError,
+    default_raw_roots,
+    open_source,
+    read_canonical,
+    save_canonical,
+)
+
+from conftest import make_contract  # noqa: E402  (tests dir is on sys.path)
+
+
+def test_netcdf_roundtrip_preserves_values_and_contract(small_ds, saved_dataset):
+    path = saved_dataset(small_ds, "roundtrip.nc")
+    assert path.exists()
+    ds = read_canonical(path)
+    try:
+        assert set(ds.data_vars) == set(small_ds.data_vars)
+        for name in small_ds.data_vars:
+            np.testing.assert_allclose(
+                np.asarray(ds[name].values), np.asarray(small_ds[name].values), rtol=0, atol=0
+            )
+        doc = read_contract(ds)
+        assert doc["generation_method"] == "statistical"
+    finally:
+        ds.close()
+    # sidecar contract.json is written next to the data file and also validates
+    from atmosgen.contract import read_contract_file
+
+    sidecar = read_contract_file(path.parent / "contract.json")
+    assert sidecar["variables"] == doc["variables"]
+
+
+def test_refuses_to_write_under_raw_dir(tmp_path, small_ds, monkeypatch):
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    monkeypatch.setenv("ATMOSGEN_RAW_DIRS", str(raw_root))
+    assert any(io.is_within(raw_root / "x.nc", root) for root in default_raw_roots())
+    with pytest.raises(RawWriteError):
+        save_canonical(small_ds, raw_root / "slice.nc", contract=make_contract(small_ds))
+    assert not (raw_root / "slice.nc").exists()
+
+
+def test_allow_raw_only_for_ingest(tmp_path, small_ds, monkeypatch):
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    monkeypatch.setenv("ATMOSGEN_RAW_DIRS", str(raw_root))
+    path = save_canonical(
+        small_ds, raw_root / "slice.nc", contract=make_contract(small_ds), allow_raw=True
+    )
+    assert path.exists()
+
+
+def test_overwrite_requires_explicit_flag(tmp_path, small_ds, saved_dataset):
+    path = saved_dataset(small_ds, "existing.nc")
+    with pytest.raises(FileExistsError):
+        save_canonical(small_ds, path, contract=make_contract(small_ds))
+    replaced = save_canonical(small_ds, path, contract=make_contract(small_ds), overwrite=True)
+    assert replaced.exists()
+
+
+def test_open_source_is_read_only_snapshot(small_ds, saved_dataset):
+    path = saved_dataset(small_ds, "source.nc")
+    before = io.file_fingerprint(path, with_sha256=True)
+    ds = open_source(path)
+    try:
+        assert "t" in ds.data_vars
+        # a source handle has no write API: saving it elsewhere is the only way out
+        assert not hasattr(ds, "to_netcdf") or callable(ds.to_netcdf)
+    finally:
+        ds.close()
+    after = io.file_fingerprint(path, with_sha256=True)
+    assert before == after
+
+
+def test_canonical_save_requires_contract(tmp_path, small_ds):
+    with pytest.raises(ContractError):
+        save_canonical(small_ds, tmp_path / "no_contract.nc")
+
+
+def test_zarr_roundtrip(tmp_path, small_ds):
+    path = save_canonical(
+        small_ds, tmp_path / "data.zarr", contract=make_contract(small_ds), format="zarr"
+    )
+    ds = read_canonical(path, format="zarr")
+    try:
+        assert set(ds.data_vars) == set(small_ds.data_vars)
+        np.testing.assert_allclose(np.asarray(ds["t"].values), np.asarray(small_ds["t"].values))
+        assert CONTRACT_ATTR in ds.attrs
+    finally:
+        ds.close()
+
+
+def test_detect_format(tmp_path):
+    assert io.detect_format(tmp_path / "a.nc") == "netcdf"
+    assert io.detect_format(tmp_path / "a.zarr") == "zarr"
+    with pytest.raises(ValueError):
+        io.detect_format(tmp_path / "a.unknown")

@@ -3,7 +3,7 @@ project: {name: stat_ctgan, seed: 42, output_dir: ./output}
 
 data:
   input: ./data/processed/era5_local.nc
-  variables: [t, q, u, v, clwc, ciwc, tcwv]
+  variables: [t, q, u, v, tcwv]   # Phase 1 主数据集变量；clwc/ciwc 需与云水样本合并后再启用
   levels: [500, 700, 850]
   subsample: {lat_step: 1.0, lon_step: 1.0}
 
