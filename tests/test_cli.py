@@ -167,7 +167,7 @@ def test_generate_statistical_end_to_end(tmp_path, write_yaml):
         app, ["report", "--input", str(run_dir / "quality_report.json"), "--format", "md"]
     )
     assert report_result.exit_code == 0
-    assert "Quality" in report_result.stdout or "quality" in report_result.stdout.lower()
+    assert "质量验证报告" in report_result.stdout or "overall_status" in report_result.stdout.lower()
 
 
 def test_generate_statistical_reuses_config_snapshot(tmp_path, write_yaml):

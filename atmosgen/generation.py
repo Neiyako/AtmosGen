@@ -20,6 +20,7 @@ from .data.io import (
     save_canonical,
 )
 from .data.selection import select_subset, subset_summary
+from .data.tabular import thin_grid
 from .generators.registry import MODELS, get_model
 from .runner import (
     create_run_dir,
@@ -185,6 +186,14 @@ def _run_statistical(
         chunks=chunks,
         overwrite=overwrite,
     )
+    # report the *effective* training grid (after data.subsample thinning), not
+    # the pre-thinning selection: the contract's samples refer to this grid
+    subsample = dict(data_cfg.subsample or {})
+    effective = thin_grid(
+        real_sub,
+        lat_step_deg=float(subsample.get("lat_step", 1.0)),
+        lon_step_deg=float(subsample.get("lon_step", 1.0)),
+    )
     meta = dict(result.metadata)
     meta.update(
         {
@@ -193,6 +202,8 @@ def _run_statistical(
             "model": generator_cls.name,
             "seed": seed,
             "subset": subset_summary(real_sub),
+            "effective_grid": subset_summary(effective),
+            "subsample": subsample,
             "ignored_hyperparameters": meta.get("ignored_hyperparameters", []),
             "real_dataset": trained_from,
         }

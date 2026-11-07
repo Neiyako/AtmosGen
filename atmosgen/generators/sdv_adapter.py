@@ -1,19 +1,21 @@
 """SDV statistical generator adapters (Mode 1, plan §4.1).
 
-Three models share one adapter class parameterised by registry name:
+Three models share one adapter: ``gaussian_copula`` (copula), ``ctgan`` (GAN)
+and ``tvae`` (VAE).
 
-- ``gaussian_copula`` — GaussianCopulaSynthesizer (copula; fast, default)
-- ``ctgan``           — CTGANSynthesizer (deep GAN, CPU-slow)
-- ``tvae``            — TVAESynthesizer (deep VAE)
+Phase 2 training scheme: **one model per pressure level** (``level_wise``).
+Each level's joint distribution is fitted on that level's cells only, so
+per-level marginals and variable correlations are preserved. Between-level,
+temporal and spatial structure is *not* modelled — the validation modules
+measure that and the run report says so; nothing is silently assumed.
 
-Sampling reconstruction follows plan §4.1: enough rows for the *full* target
-grid are drawn from the fitted model and assigned to real coordinates in
-raster order by :func:`atmosgen.data.tabular.rows_to_fields`. Spatio-temporal
-coherence is NOT promised and is reported by the validation modules.
-
-Hyper-parameters are matched against the installed SDV version by signature
-introspection; unsupported keys are recorded as ignored instead of breaking a
-run (the ignored list lands in run metadata).
+Why not one model with covariates? Measured in this environment (SDV 2.1.0):
+conditioning the Gaussian copula on continuous covariates is exact-interval
+inversion and degenerates at the empirical boundary (level=500 conditioning
+collapsed ``t`` to 248.0 K ± 0.02 K, and sampling took 148 s for 32 448 rows);
+CTGAN/TVAE condition by rejection sampling (1 accepted row per 100 tries on 4
+continuous covariates, ~6 s/row). Both are unsuitable for full grids, so the
+level-wise scheme is used and recorded in the contract.
 """
 
 from __future__ import annotations
@@ -27,17 +29,11 @@ import pandas as pd
 import xarray as xr
 
 from ..contract import attach_contract, build_contract
-from ..data.tabular import (
-    SUPPORTED_COVARIATES,
-    TableError,
-    build_grid,
-    dataset_to_table,
-    rows_to_fields,
-    table_feature_count,
-    thin_grid,
-)
+from ..data.tabular import build_grid, rows_to_fields, thin_grid
 from ..runner import ResourceTracker, set_global_seed
 from .base import BaseGenerator, GenerationResult
+
+TABLE_NAME = "atmosgen"
 
 MODEL_CLASSES: dict[str, str] = {
     "gaussian_copula": "GaussianCopulaSynthesizer",
@@ -47,8 +43,8 @@ MODEL_CLASSES: dict[str, str] = {
 
 DEFAULT_TRAINING: dict[str, Any] = {"epochs": 100, "batch_size": 500}
 
-
-TABLE_NAME = "atmosgen"
+#: Training scheme recorded in the contract (see module docstring).
+TRAINING_SCHEME = "level_wise"
 
 
 def _sdv_factories() -> dict[str, Any]:
@@ -93,16 +89,31 @@ def _numerical_metadata(metadata_cls: Any, df: pd.DataFrame) -> Any:
     """All features are float columns of one table (sdv 2.x unified Metadata)."""
 
     metadata = metadata_cls()
-    if not metadata.to_dict().get("tables"):
-        metadata.add_table(TABLE_NAME)
+    metadata.add_table(TABLE_NAME)
     for column in df.columns:
         metadata.add_column(column_name=column, sdtype="numerical", table_name=TABLE_NAME)
     metadata.validate()
     return metadata
 
 
+def _unwrap_sampled(sampled: Any) -> pd.DataFrame:
+    """sdv 2.x returns ``{table: DataFrame}``; sdv 1.x returned a DataFrame."""
+
+    if isinstance(sampled, Mapping):
+        if TABLE_NAME not in sampled:
+            raise RuntimeError(f"SDV sample is missing table {TABLE_NAME!r}: {list(sampled)}")
+        frame = sampled[TABLE_NAME]
+    else:
+        frame = sampled
+    if not isinstance(frame, pd.DataFrame):
+        raise RuntimeError(
+            f"SDV sample returned {type(frame).__name__}, expected pandas.DataFrame"
+        )
+    return frame
+
+
 class SDVGenerator(BaseGenerator):
-    """Fit/sample/save for the three SDV single-table models."""
+    """Fit/sample/save for the three SDV single-table models (level-wise)."""
 
     name: ClassVar[str] = ""
     mode: ClassVar[str] = "statistical"
@@ -131,20 +142,24 @@ class SDVGenerator(BaseGenerator):
         self.config_sha256 = config_sha256
         self.trained_from = dict(trained_from) if trained_from else None
         self.created_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        training_block = getattr(getattr(config, "generation", None), "training", None) if config else None
+        training_block = (
+            getattr(getattr(config, "generation", None), "training", None) if config else None
+        )
         self.training: dict[str, Any] = {
             "epochs": int(getattr(training_block, "epochs", 100)) if training_block else 100,
             "batch_size": int(getattr(training_block, "batch_size", 500)) if training_block else 500,
-            "discriminator_steps": int(getattr(training_block, "discriminator_steps", 1)) if training_block else 1,
+            "discriminator_steps": int(getattr(training_block, "discriminator_steps", 1))
+            if training_block
+            else 1,
         }
         self.fit_resources: dict[str, Any] = {}
         self.sample_resources: dict[str, Any] = {}
         self.ignored_hyperparameters: list[str] = []
         self.adjusted_hyperparameters: dict[str, Any] = {}
-        self._synthesizer: Any = None
-        self._table_meta: Mapping[str, Any] | None = None
-        self._feature_names: list[str] = []
+        self._level_models: dict[Any, Any] = {}
         self._grid: Mapping[str, np.ndarray] | None = None
+        self._variables: list[str] = []
+        self._covariates: list[str] = []
         try:
             import sdv
 
@@ -152,8 +167,6 @@ class SDVGenerator(BaseGenerator):
         except Exception as exc:  # pragma: no cover - availability checked earlier
             raise RuntimeError(f"sdv is not importable: {type(exc).__name__}: {exc}") from exc
 
-    # ------------------------------------------------------------------ #
-    # availability
     # ------------------------------------------------------------------ #
     @classmethod
     def dependency_problems(cls) -> list[str]:
@@ -166,16 +179,12 @@ class SDVGenerator(BaseGenerator):
         return problems
 
     # ------------------------------------------------------------------ #
-    # learning
-    # ------------------------------------------------------------------ #
     def _data_settings(self) -> dict[str, Any]:
         data = getattr(self.config, "data", None)
         variables = list(getattr(data, "variables", None) or ["t", "q", "u", "v", "tcwv"])
-        covariates = [
-            name
-            for name in (getattr(getattr(self.config, "generation", None), "covariates", None) or [])
-            if name in SUPPORTED_COVARIATES
-        ]
+        covariates = list(
+            getattr(getattr(self.config, "generation", None), "covariates", None) or []
+        )
         subsample = dict(getattr(data, "subsample", None) or {})
         return {
             "variables": variables,
@@ -185,107 +194,139 @@ class SDVGenerator(BaseGenerator):
         }
 
     def fit(self, dataset: xr.Dataset) -> "SDVGenerator":
-        """Fit on a canonical real dataset (already subset by the runner)."""
+        """Fit one synthesizer per pressure level (see module docstring)."""
 
         settings = self._data_settings()
+        self._variables = list(settings["variables"])
+        self._covariates = list(settings["covariates"])
         tracker = ResourceTracker(label=f"fit:{self.model_name}").start()
         try:
             learned_ds = thin_grid(
                 dataset, lat_step_deg=settings["lat_step"], lon_step_deg=settings["lon_step"]
             )
-            X, features, table_meta = dataset_to_table(
-                learned_ds,
-                variables=settings["variables"],
-                covariates=settings["covariates"],
-            )
-            self._table_meta = table_meta
-            self._feature_names = features
             self._grid = build_grid(learned_ds)
-
             factories = _sdv_factories()
-            metadata = _numerical_metadata(factories["metadata_cls"], pd.DataFrame(X, columns=features))
-            hyper: dict[str, Any] = {"enforce_min_max_values": True}
-            if self.model_name in {"ctgan", "tvae"}:
-                hyper.update(
-                    epochs=int(self.training["epochs"]),
-                    batch_size=int(self.training["batch_size"]),
-                )
-                if self.model_name == "ctgan":
-                    hyper["discriminator_steps"] = int(self.training["discriminator_steps"])
-            # CTGAN pads the discriminator input with `pac=10` columns, so the
-            # batch size must be a multiple of 10; round instead of exploding.
-            if self.model_name == "ctgan":
-                requested_batch = int(hyper["batch_size"])
-                hyper["batch_size"] = max(10, requested_batch - requested_batch % 10)
-                if hyper["batch_size"] != requested_batch:
-                    self.adjusted_hyperparameters[f"batch_size"] = {
-                        "requested": requested_batch,
-                        "applied": hyper["batch_size"],
-                        "reason": "ctgan requires batch_size % 10 == 0",
-                    }
             synthesizer_cls = factories["synthesizers"][self.model_name]
-            accepted, ignored = _filter_signature(synthesizer_cls.__init__, hyper)
-            self.ignored_hyperparameters = ignored
-            self._synthesizer = synthesizer_cls(metadata, **accepted)
-            self._synthesizer.fit({TABLE_NAME: pd.DataFrame(X, columns=features)})
+            levels = self._grid.get("level")
+            level_values: Sequence[Any] = (
+                list(np.asarray(levels).tolist()) if levels is not None else [None]
+            )
+            for level_value in level_values:
+                subset = (
+                    learned_ds.sel(level=level_value) if level_value is not None else learned_ds
+                )
+                values = {
+                    name: np.asarray(subset[name].values, dtype=float).reshape(-1)
+                    for name in self._variables
+                }
+                df = pd.DataFrame(values, columns=self._variables)
+                df = df.replace([np.inf, -np.inf], np.nan).dropna()
+                metadata = _numerical_metadata(factories["metadata_cls"], df)
+                hyper: dict[str, Any] = {"enforce_min_max_values": True}
+                if self.model_name in {"ctgan", "tvae"}:
+                    hyper.update(
+                        epochs=int(self.training["epochs"]),
+                        batch_size=int(self.training["batch_size"]),
+                    )
+                    if self.model_name == "ctgan":
+                        hyper["discriminator_steps"] = int(self.training["discriminator_steps"])
+                if self.model_name == "ctgan":
+                    requested_batch = int(hyper["batch_size"])
+                    hyper["batch_size"] = max(10, requested_batch - requested_batch % 10)
+                    if hyper["batch_size"] != requested_batch:
+                        self.adjusted_hyperparameters["batch_size"] = {
+                            "requested": requested_batch,
+                            "applied": hyper["batch_size"],
+                            "reason": "ctgan requires batch_size % 10 == 0",
+                        }
+                accepted, ignored = _filter_signature(synthesizer_cls.__init__, hyper)
+                self.ignored_hyperparameters = sorted(
+                    set(self.ignored_hyperparameters) | set(ignored)
+                )
+                synthesizer = synthesizer_cls(metadata, **accepted)
+                synthesizer.fit({TABLE_NAME: df})
+                self._level_models[level_value] = synthesizer
         finally:
             self.fit_resources = tracker.stop()
         self._fitted = True
         return self
 
     # ------------------------------------------------------------------ #
-    # sampling
-    # ------------------------------------------------------------------ #
-    def _requested_rows(self) -> int:
-        samples = getattr(getattr(self.config, "generation", None), "samples", None)
-        unit = getattr(samples, "unit", "cell_time") if samples is not None else "cell_time"
-        if unit != "cell_time":
-            raise TableError(
-                "samples.unit=field 与表格模型不兼容；统计模式请使用 samples.unit=cell_time"
+    def _level_values(self) -> list[Any]:
+        levels = self._grid.get("level") if self._grid else None
+        return list(np.asarray(levels).tolist()) if levels is not None else [None]
+
+    def _rows_per_level(self) -> int:
+        grid = self._grid
+        return (
+            int(np.asarray(grid["time"]).size)
+            * int(np.asarray(grid["latitude"]).size)
+            * int(np.asarray(grid["longitude"]).size)
+        )
+
+    def _sample_rows(self, synthesizer: Any, rows: int) -> np.ndarray:
+        collected: list[np.ndarray] = []
+        drawn = 0
+        while drawn < rows:
+            need = max(min(rows - drawn, 8192), 1)
+            frame = _unwrap_sampled(
+                synthesizer.sample(num_rows=need, batch_size=min(need, 4096))
             )
-        requested = int(getattr(samples, "rows", 0) or 0) if samples is not None else 0
-        grid_rows = table_feature_count(self._grid)
-        return max(requested, grid_rows)
+            batch = frame[self._variables].to_numpy(dtype=float, na_value=np.nan)
+            if batch.shape[0] == 0:
+                raise RuntimeError("SDV returned 0 rows; is the synthesizer fitted?")
+            collected.append(batch)
+            drawn += batch.shape[0]
+        return np.vstack(collected)[:rows]
 
     def sample(self) -> GenerationResult:
-        """Draw rows until the target grid is filled, then rebuild the fields.
-
-        Records ``rows_requested`` vs ``rows_generated`` in the contract: SDV
-        synthesizers may return fewer rows than asked for, so the adapter
-        batches until ``rows_generated >= grid_rows`` and truncates.
-        """
+        """Draw rows per level and rebuild fields on the fitted grid."""
 
         self.require_fitted()
-        requested = self._requested_rows()
-        grid_rows = table_feature_count(self._grid)
+        grid = self._grid
+        n_t = int(np.asarray(grid["time"]).size)
+        n_a = int(np.asarray(grid["latitude"]).size)
+        n_o = int(np.asarray(grid["longitude"]).size)
+        levels = self._level_values()
+        n_l = len(levels)
+        per_level = n_t * n_a * n_o
+        grid_rows = per_level * n_l
+
         tracker = ResourceTracker(label=f"sample:{self.model_name}").start()
         try:
-            collected: list[np.ndarray] = []
-            drawn = 0
-            while drawn < grid_rows:
-                need = max(min(grid_rows - drawn, max(requested, 512)), 1)
-                collected.append(self._sample_batch(need))
-                drawn += collected[-1].shape[0]
-                if collected[-1].shape[0] == 0:
-                    raise RuntimeError("SDV returned 0 rows; is the synthesizer fitted?")
-            rows = np.vstack(collected)[:grid_rows]
-            dataset = rows_to_fields(
-                rows, self._table_meta, variables=self._variable_names()
-            )
+            full = np.empty((n_t, n_l, n_a, n_o, len(self._variables)), dtype=float)
+            for li, level_value in enumerate(levels):
+                rows = self._sample_rows(self._level_models[level_value], per_level)
+                full[:, li, :, :, :] = rows.reshape(n_t, n_a, n_o, len(self._variables))
+            rows_flat = full.reshape(-1, len(self._variables))
+            meta = {
+                "variables": list(self._variables),
+                "features": list(self._variables),
+                "grid": {
+                    "time": np.asarray(grid["time"]).tolist(),
+                    "level": np.asarray(grid["level"]).tolist() if "level" in grid else None,
+                    "latitude": np.asarray(grid["latitude"]).tolist(),
+                    "longitude": np.asarray(grid["longitude"]).tolist(),
+                },
+            }
+            dataset = rows_to_fields(rows_flat, meta, variables=list(self._variables))
         finally:
             self.sample_resources = tracker.stop()
+
         contract = self._contract(
-            dataset, rows_generated=int(rows.shape[0]), rows_requested=requested
+            dataset, rows_generated=int(rows_flat.shape[0]), rows_requested=grid_rows
         )
-        # attach before returning: readers can then trust the dataset alone
         dataset = attach_contract(dataset, contract)
         return GenerationResult(
             dataset=dataset,
             contract=contract,
             metadata={
-                "rows_requested": requested,
-                "rows_generated": int(rows.shape[0]),
+                "rows_requested": grid_rows,
+                "rows_generated": int(rows_flat.shape[0]),
                 "grid_rows": grid_rows,
+                "rows_per_level": per_level,
+                "levels": levels,
+                "training_scheme": TRAINING_SCHEME,
                 "ignored_hyperparameters": list(self.ignored_hyperparameters),
                 "adjusted_hyperparameters": dict(self.adjusted_hyperparameters),
                 "resources": self.sample_resources,
@@ -293,31 +334,6 @@ class SDVGenerator(BaseGenerator):
             },
         )
 
-    def _sample_batch(self, rows: int) -> np.ndarray:
-        sampled = self._synthesizer.sample(num_rows=rows, batch_size=min(rows, 4096))
-        # sdv 2.x returns {table_name: DataFrame}; sdv 1.x returned a DataFrame
-        if isinstance(sampled, Mapping):
-            if TABLE_NAME not in sampled:
-                raise RuntimeError(f"SDV sample is missing table {TABLE_NAME!r}: {list(sampled)}")
-            frame = sampled[TABLE_NAME]
-        else:
-            frame = sampled
-        if not isinstance(frame, pd.DataFrame):
-            raise RuntimeError(
-                f"SDV sample returned {type(frame).__name__}, expected pandas.DataFrame"
-            )
-        missing = [name for name in self._feature_names if name not in frame.columns]
-        if missing:
-            raise RuntimeError(f"SDV sample is missing columns {missing}")
-        return frame[self._feature_names].to_numpy(dtype=float, na_value=np.nan)
-
-    def _variable_names(self) -> list[str]:
-        if self._table_meta is None:
-            return []
-        return [name for name in self._table_meta["variables"] if name in self._feature_names]
-
-    # ------------------------------------------------------------------ #
-    # contract
     # ------------------------------------------------------------------ #
     def _contract(
         self, dataset: xr.Dataset, *, rows_generated: int, rows_requested: int
@@ -330,6 +346,12 @@ class SDVGenerator(BaseGenerator):
                 "rows_requested": rows_requested,
                 "rows_generated": rows_generated,
                 "fields": int(dataset["time"].size),
+                "training_scheme": TRAINING_SCHEME,
+                "levels": self._level_values(),
+                "covariates_configured": list(self._covariates),
+                "covariates_not_used": [
+                    name for name in self._covariates if name != "level"
+                ],
             },
             "training": {
                 key: value
@@ -358,15 +380,13 @@ class SDVGenerator(BaseGenerator):
                 "elapsed_seconds_fit": self.fit_resources.get("elapsed_seconds"),
                 "peak_rss_mb_fit": self.fit_resources.get("peak_rss_mb"),
                 "notes": (
-                    "Mode 1 statistical generation; rows carry generated values only, "
-                    "grid coordinates are real (plan §4.1). Temporal/spatial coherence "
-                    "is measured by validation, not assumed."
+                    "Mode 1 statistical generation, level-wise scheme: per-level joint "
+                    "distributions from SDV; between-level/temporal/spatial structure is "
+                    "not modelled and is measured by validation (plan §4.1 limitation)."
                 ),
             },
         )
 
-    # ------------------------------------------------------------------ #
-    # conditional sampling (Phase 4 hook)
     # ------------------------------------------------------------------ #
     def sample_conditional(
         self,
@@ -375,19 +395,30 @@ class SDVGenerator(BaseGenerator):
         num_rows: int = 1,
         default_upon_rejection: bool = False,
     ) -> pd.DataFrame:
-        """Sample with known column values (hybrid mode entry point)."""
+        """Phase 4 hook: conditional sampling via SDV conditions.
+
+        A ``level`` key selects the corresponding level-wise model (removed from
+        the conditions); remaining known columns go to ``sample_from_conditions``.
+        """
 
         self.require_fitted()
         from sdv.sampling import Condition
 
-        condition = Condition(column_values=dict(known_values), num_rows=int(num_rows))
+        conditions = dict(known_values)
+        level_value = conditions.pop("level", self._level_values()[0])
+        if level_value not in self._level_models:
+            raise KeyError(
+                f"level={level_value!r} 无对应模型；已训练层: {list(self._level_models)}"
+            )
+        synthesizer = self._level_models[level_value]
+        if not conditions:
+            return _unwrap_sampled(synthesizer.sample(num_rows=int(num_rows)))
+        condition = Condition(column_values=dict(conditions), num_rows=int(num_rows))
         accepted, _ignored = _filter_signature(
-            self._synthesizer.sample_from_conditions,
+            synthesizer.sample_from_conditions,
             {"batch_size": None, "default_upon_rejection": default_upon_rejection},
         )
-        sampled = self._synthesizer.sample_from_conditions([condition], **accepted)
-        frame = sampled[TABLE_NAME] if isinstance(sampled, Mapping) else sampled
-        return frame
+        return _unwrap_sampled(synthesizer.sample_from_conditions([condition], **accepted))
 
 
 class GaussianCopulaGenerator(SDVGenerator):
@@ -418,6 +449,8 @@ __all__ = [
     "GaussianCopulaGenerator",
     "MODEL_CLASSES",
     "SDVGenerator",
+    "TABLE_NAME",
+    "TRAINING_SCHEME",
     "TVAEGenerator",
     "_filter_signature",
 ]

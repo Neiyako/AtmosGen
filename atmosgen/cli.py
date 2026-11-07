@@ -207,7 +207,7 @@ def run_generate_command(*, config_path: Path, overwrite: bool = False) -> int:
     fit = meta.get("fit_resources") or {}
     sample = meta.get("resources") or {}
     samples = (outcome.contract or {}).get("generation_config", {}).get("samples", {})
-    subset = meta.get("subset") or {}
+    subset = meta.get("effective_grid") or meta.get("subset") or {}
     typer.echo(f"generate 完成: mode={meta.get('mode')} model={meta.get('model')} seed={meta.get('seed')}")
     typer.echo(f"  run 目录:    {outcome.run_dir}")
     typer.echo(f"  输出数据:    {outcome.data_path}")

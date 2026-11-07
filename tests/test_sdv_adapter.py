@@ -67,7 +67,9 @@ def test_gaussian_copula_fit_sample_contract(tmp_path):
     assert contract["source"]["kind"] == "synthetic"
     assert contract["source"]["trained_from"]["dataset"] == "unit-test"
     samples = contract["generation_config"]["samples"]
-    assert samples["rows_generated"] >= 24  # grid rows = 3*2*3*4
+    assert samples["training_scheme"] == "level_wise"
+    assert samples["rows_generated"] == 3 * 2 * 3 * 4  # grid rows (time*level*lat*lon)
+    assert samples["levels"] == [500.0, 700.0]
 
 
 def test_test_b_roundtrip_save_and_reread(tmp_path):
@@ -111,7 +113,8 @@ def test_ctgan_tiny_epochs_produces_grid(tmp_path):
     assert result.dataset.sizes["time"] == 3
     assert np.isfinite(np.asarray(result.dataset["q"].values)).all()
     samples = read_contract(result.dataset)["generation_config"]["samples"]
-    assert samples["rows_generated"] >= 24
+    assert samples["rows_generated"] == 72
+    assert samples["training_scheme"] == "level_wise"
 
 
 def test_tvae_tiny_epochs_produces_grid(tmp_path):
@@ -127,8 +130,7 @@ def test_tvae_tiny_epochs_produces_grid(tmp_path):
 
 
 def test_sample_before_fit_raises():
-    ds = build_small_dataset(seed=0)
-    config = _tiny_config(Path("/tmp"), tmp_path := Path("/tmp") / "x", model="gaussian_copula", rows=8)
+    config = _tiny_config(Path("/tmp"), Path("/tmp") / "x", model="gaussian_copula", rows=8)
     gen = GaussianCopulaGenerator(config, seed=1)
     with pytest.raises(RuntimeError):
         gen.sample()
@@ -150,5 +152,11 @@ def test_conditional_sample_hook(tmp_path):
     config = _tiny_config(tmp_path, real_path, model="gaussian_copula", rows=128)
     gen = GaussianCopulaGenerator(config, seed=11)
     gen.fit(build_small_dataset(seed=6))
-    frame = gen.sample_conditional({"hour_sin": 1.0}, num_rows=3)
-    assert list(frame["hour_sin"][:3]) == [1.0, 1.0, 1.0]
+    # level selects the level-wise model; no other conditions -> plain sample
+    frame = gen.sample_conditional({"level": 500.0}, num_rows=3)
+    assert len(frame) == 3 and set(frame.columns) >= {"t", "q", "u", "v", "tcwv"}
+    # continuous conditioning is SDV's boundary-sensitive path (see adapter
+    # docstring); the hook exists for Phase 4 and is exercised there, not in
+    # the Phase 2 end-to-end path.  A wrong level must fail loudly instead.
+    with pytest.raises(KeyError):
+        gen.sample_conditional({"level": 123.0}, num_rows=1)

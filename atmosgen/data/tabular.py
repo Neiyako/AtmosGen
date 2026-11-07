@@ -99,6 +99,34 @@ def _covariate_values(name: str, *, times: np.ndarray, level: np.ndarray | None,
     raise TableError(f"不支持的协变量 {name!r}；可用: {list(SUPPORTED_COVARIATES)}")
 
 
+def grid_covariates(
+    grid: Mapping[str, np.ndarray], covariates: Sequence[str]
+) -> dict[str, np.ndarray]:
+    """Covariate columns for the *full* target grid in raster order.
+
+    Used for conditional sampling: the known covariate values of every target
+    cell are passed to SDV so generated rows keep the real level/time/space
+    structure instead of being assigned to coordinates at random.
+    """
+
+    unknown = [name for name in covariates if name not in SUPPORTED_COVARIATES]
+    if unknown:
+        raise TableError(f"不支持的协变量 {unknown}；可用: {list(SUPPORTED_COVARIATES)}")
+    times = np.asarray(grid["time"])
+    lat = np.asarray(grid["latitude"], dtype=float)
+    lon = np.asarray(grid["longitude"], dtype=float)
+    has_level = grid.get("level") is not None
+    levels = np.asarray(grid["level"], dtype=float) if has_level else None
+    n_level = 1 if levels is None else levels.size
+    out: dict[str, np.ndarray] = {}
+    for name in covariates:
+        values = _covariate_values(
+            name, times=times, level=levels, lat=lat, lon=lon, n_level=n_level
+        )
+        out[name] = np.asarray(values, dtype=float).reshape(-1)
+    return out
+
+
 def dataset_to_table(
     ds: xr.Dataset,
     *,
@@ -299,6 +327,7 @@ __all__ = [
     "TableError",
     "build_grid",
     "dataset_to_table",
+    "grid_covariates",
     "rows_to_fields",
     "table_feature_count",
     "thin_grid",
