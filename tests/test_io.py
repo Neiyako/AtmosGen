@@ -36,7 +36,7 @@ def test_netcdf_roundtrip_preserves_values_and_contract(small_ds, saved_dataset)
     # sidecar contract.json is written next to the data file and also validates
     from atmosgen.contract import read_contract_file
 
-    sidecar = read_contract_file(path.parent / "contract.json")
+    sidecar = read_contract_file(io.sidecar_contract_path(path))
     assert sidecar["variables"] == doc["variables"]
 
 
@@ -68,18 +68,35 @@ def test_overwrite_requires_explicit_flag(tmp_path, small_ds, saved_dataset):
     assert replaced.exists()
 
 
-def test_open_source_is_read_only_snapshot(small_ds, saved_dataset):
+def test_open_source_snapshot_does_not_touch_source(small_ds, saved_dataset):
+    """Reading a source must not modify it (the write guard is save_canonical's job)."""
+
     path = saved_dataset(small_ds, "source.nc")
     before = io.file_fingerprint(path, with_sha256=True)
     ds = open_source(path)
     try:
         assert "t" in ds.data_vars
-        # a source handle has no write API: saving it elsewhere is the only way out
-        assert not hasattr(ds, "to_netcdf") or callable(ds.to_netcdf)
+        # reading through the dask/backend layer must not rewrite the file
+        _ = float(ds["t"].isel(time=0, level=0, latitude=0, longitude=0).values)
     finally:
         ds.close()
     after = io.file_fingerprint(path, with_sha256=True)
     assert before == after
+
+
+def test_sidecar_does_not_collide_within_one_directory(tmp_path, small_ds):
+    first = save_canonical(small_ds, tmp_path / "a.nc", contract=make_contract(small_ds))
+    second = save_canonical(small_ds, tmp_path / "b.nc", contract=make_contract(small_ds))
+    from atmosgen.contract import read_contract_file
+
+    sidecar_a = io.sidecar_contract_path(first)
+    sidecar_b = io.sidecar_contract_path(second)
+    assert sidecar_a != sidecar_b
+    assert sidecar_a.exists() and sidecar_b.exists()
+    assert read_contract_file(sidecar_a)["variables"] == ["t", "q", "u", "v", "tcwv"]
+    # data.nc keeps the schema-mandated contract.json name
+    run_like = save_canonical(small_ds, tmp_path / "run" / "data.nc", contract=make_contract(small_ds))
+    assert io.sidecar_contract_path(run_like) == tmp_path / "run" / "contract.json"
 
 
 def test_canonical_save_requires_contract(tmp_path, small_ds):

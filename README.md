@@ -9,7 +9,7 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | **Phase 0** | 五个第三方项目技术审查、复用矩阵、依赖兼容性、实施计划 | ✅ **已完成** |
-| **Phase 1** | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ✅ **已完成**（2026-11-07，见 [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md)） |
+| **Phase 1** | 最小运行骨架：契约 / IO / 配置 / CLI / 真实数据 ingest | ✅ **已完成**（2026-11-07，Test A PASS，见 [docs/PHASE1_REPORT.md](docs/PHASE1_REPORT.md)） |
 | Phase 2 | 统计生成（SDV）+ 统计/时序/空间评价 | ⏳ 待实施 |
 | Phase 3 | 物理仿真（2D advection–diffusion + 解析解验证） | ⏳ 待实施 |
 | Phase 4 | 混合生成（物理基底 + 条件生成 + 物理筛检） | ⏳ 待实施 |
@@ -43,7 +43,7 @@ conda activate atmosgen
 pip install numpy pandas xarray netCDF4 zarr dask gcsfs pyyaml pydantic typer \
             scipy scikit-learn matplotlib pytest sdv sdmetrics
 pip install -e . --no-deps      # 安装 atmosgen 包与 atmosgen 命令（Phase 1 已可用）
-pytest -q                        # 46 个用例（Phase 1）
+pytest -q                        # 49 个用例（Phase 1）
 ```
 
 版本锁定见 `research/env/logs/atmosgen_pip_freeze.txt`。Synthcity 需要独立环境（Python 3.10 + torch 2.2.x + numpy<2），Phase 2 验证，见依赖文档。

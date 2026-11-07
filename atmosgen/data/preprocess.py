@@ -39,14 +39,15 @@ from .io import (
     open_source,
     resolve_path,
     save_canonical,
+    sidecar_contract_path,
 )
 from ..runner import (
     ResourceTracker,
     create_run_dir,
-    environment_snapshot,
     make_run_id,
     set_global_seed,
     snapshot_config,
+    write_environment_snapshot,
     write_json,
 )
 
@@ -173,12 +174,17 @@ class IngestReport:
 
 
 def _overall_status(checks: Mapping[str, str]) -> str:
-    """FAIL > NOT_RUN -> CONDITIONAL_PASS > PASS (NOT_RUN never counts as PASS)."""
+    """Aggregate per-check states without ever upgrading a partial pass.
+
+    ``FAIL`` dominates; any check that is not ``PASS`` (i.e. ``CONDITIONAL_PASS``
+    or ``NOT_RUN``) downgrades the overall status to ``CONDITIONAL_PASS``;
+    only all-``PASS`` becomes ``PASS``. A ``NOT_RUN`` is never reported as PASS.
+    """
 
     states = set(checks.values())
     if "FAIL" in states:
         return "FAIL"
-    if "NOT_RUN" in states:
+    if states != {"PASS"}:
         return "CONDITIONAL_PASS"
     return "PASS"
 
@@ -483,6 +489,42 @@ def ingest(
     )
 
 
+def _check_vertical_type(ds: xr.Dataset, declared: str) -> None:
+    """Reject a pressure/model-level mismatch between config and source data."""
+
+    if "level" not in ds.coords:
+        return
+    units = str(ds["level"].attrs.get("units", "")).lower()
+    pressure_like = units in {"hpa", "mb", "millibars", "millibar", "pa", "hpaa"} or units.startswith("hpa")
+    if declared == "pressure_level" and not pressure_like:
+        raise IngestError(
+            f"source.vertical=pressure_level 但数据 level 单位为 {units!r}；"
+            "请确认是气压层还是模式层"
+        )
+    if declared == "model_level" and pressure_like:
+        raise IngestError(
+            f"source.vertical=model_level 但数据 level 单位为 {units!r}（看起来是气压层）"
+        )
+
+
+def _check_years(root: Path, years: list[int] | None, date_range: tuple[str, str]) -> None:
+    """Verify ``source.years`` is consistent with the archive and the date range."""
+
+    if not years:
+        return
+    for year in years:
+        if not (root / str(year)).is_dir():
+            raise IngestError(f"source.years 声明了 {year}，但 {root / str(year)} 不存在")
+    start_year = date.fromisoformat(date_range[0]).year
+    end_year = date.fromisoformat(date_range[1]).year
+    missing = [year for year in range(start_year, end_year + 1) if year not in years]
+    if missing:
+        raise IngestError(
+            f"source.date_range 覆盖年份 {missing} 不在 source.years={years} 中；"
+            "删除 years（自动按 date_range 推导）或补齐年份"
+        )
+
+
 def _run_context(
     config: IngestConfigFile, *, config_path: str | Path | None
 ) -> tuple[Path, ResourceTracker, int]:
@@ -494,6 +536,7 @@ def _run_context(
     )
     if config_path is not None:
         snapshot_config(config_path, run_dir)
+    write_environment_snapshot(run_dir)
     tracker = ResourceTracker(label="ingest").start()
     return run_dir, tracker, seed
 
@@ -508,6 +551,7 @@ def _finalize_report(
 ) -> IngestReport:
     report.resources = tracker.stop()
     report.run_dir = run_dir
+    report.notes.append("run 目录含 config.yaml 快照与 environment.json 环境快照（Test E 依据）")
     report.report_json = run_dir / ("test_a_report.json" if report.kind == "local_era5" else "ingest_report.json")
     write_json(report.report_json, report.to_dict())
     return report
@@ -528,6 +572,7 @@ def _ingest_local_era5(
     if not root.is_dir():
         raise IngestError(f"ERA5 archive root is not a directory: {root}")
     days = _date_range(*source.date_range)
+    _check_years(root, source.years, source.date_range)
     variables = [name for name in (source.variable_map or {}) if name in known_variables()]
     variables = variables or [name for name in DEFAULT_VARIABLES if name in known_variables()]
     level_targets = subset.levels
@@ -596,6 +641,8 @@ def _ingest_local_era5(
             "negative_count": int((finite < 0).sum()) if finite.size else 0,
             "gravity": GRAVITY,
         }
+
+    _check_vertical_type(processed_ds, source.vertical)
 
     # 3. contracts + writes
     source_meta: dict[str, Any] = {
@@ -679,7 +726,7 @@ def _ingest_local_era5(
     processed_sha = sha256_file(processed_target)
     processed_contract.setdefault("source", {})["sha256"] = processed_sha
     validate_contract(processed_contract, processed_ds)
-    write_contract_file(processed_target.parent / "contract.json", processed_contract)
+    write_contract_file(sidecar_contract_path(processed_target), processed_contract)
     report.contract_sha256 = processed_sha
 
     # 5. read back to prove the file is usable
@@ -700,7 +747,9 @@ def _ingest_local_era5(
             same = same and prev["sha256"] == now["sha256"]
         unchanged.append(same)
     readonly_ok = all(unchanged)
+    enforce_readonly = bool(config.output.read_only_assertion)
     report.readonly = {
+        "enforced": enforce_readonly,
         "all_unchanged": readonly_ok,
         "files_checked": len(file_paths),
         "sha256_files": sum(1 for entry in before.values() if entry.get("sha256")),
@@ -767,7 +816,11 @@ def _ingest_local_era5(
     report.checks = {
         "source_files_found": "PASS",
         "time_axis_consistency": "PASS",
-        "readonly_sources_unchanged": "PASS" if readonly_ok else "FAIL",
+        "readonly_sources_unchanged": (
+            "PASS" if readonly_ok else "FAIL"
+        )
+        if enforce_readonly
+        else "NOT_RUN",
         "contract_valid": "PASS",
         "roundtrip_readback": "PASS" if not readback_problems else "FAIL",
         "no_missing_values": "PASS"
@@ -783,8 +836,8 @@ def _ingest_local_era5(
         "tcwv 为 q 垂直积分派生量（derived），不得在报告中当作 ERA5 官方 tcwv"
     )
     report.notes.append(
-        "嵌入式契约的 source.sha256 为 null（自引用不可行）；最终文件校验和写入 "
-        "contract.json 侧车与 test_a_report.json"
+        "嵌入式契约不含 source.sha256（文件校验和写进文件自身是自引用、不可成立）；"
+        "最终文件校验和写入侧车契约与 test_a_report.json"
     )
     report.status = _overall_status(report.checks)
     return _finalize_report(report, config=config, config_path=config_path, tracker=tracker, run_dir=run_dir)
@@ -901,7 +954,7 @@ def _ingest_local_netcdf(
     processed_sha = sha256_file(processed_target)
     processed_contract.setdefault("source", {})["sha256"] = processed_sha
     validate_contract(processed_contract, processed_ds)
-    write_contract_file(processed_target.parent / "contract.json", processed_contract)
+    write_contract_file(sidecar_contract_path(processed_target), processed_contract)
     report.contract_sha256 = processed_sha
 
     readback = open_source(processed_target, chunks=None).load()
@@ -915,6 +968,7 @@ def _ingest_local_netcdf(
     readonly_ok = prev["size_bytes"] == now["size_bytes"] and prev["mtime_ns"] == now["mtime_ns"]
     if prev.get("sha256") is not None:
         readonly_ok = readonly_ok and prev["sha256"] == now["sha256"]
+    enforce_readonly = bool(config.output.read_only_assertion)
 
     stats = dataset_statistics(processed_ds)
     report.variables = {
@@ -961,7 +1015,11 @@ def _ingest_local_netcdf(
     }
     report.checks = {
         "source_files_found": "PASS",
-        "readonly_sources_unchanged": "PASS" if readonly_ok else "FAIL",
+        "readonly_sources_unchanged": (
+            "PASS" if readonly_ok else "FAIL"
+        )
+        if enforce_readonly
+        else "NOT_RUN",
         "contract_valid": "PASS",
         "roundtrip_readback": "PASS" if not readback_problems else "FAIL",
         "no_missing_values": "PASS"

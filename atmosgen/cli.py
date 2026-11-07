@@ -75,7 +75,11 @@ def command_validate_config(
 ) -> None:
     """校验配置文件（结构 + 跨字段 + 可选数据级检查）。"""
 
-    check = validate_config_file(config, check_data=check_data)
+    try:
+        check = validate_config_file(config, check_data=check_data)
+    except Exception as exc:  # noqa: BLE001 - keep the documented exit-code contract
+        _echo_error(f"validate-config 运行失败（未预期异常）: {type(exc).__name__}: {exc}")
+        raise typer.Exit(code=EXIT_RUNTIME_ERROR)
     typer.echo(check.summary())
     if not check.valid:
         typer.echo("result: FAIL（修复上方 ERROR 后重试；字段规范见 docs/IMPLEMENTATION_PLAN.md §6.1）")
@@ -110,13 +114,30 @@ def run_ingest(*, config_path: Path, overwrite: bool = False) -> int:
         return EXIT_USER_ERROR
     try:
         report = ingest(config, config_path=config_path, overwrite=overwrite)
-    except (IngestError, ContractError, FileExistsError, FileNotFoundError) as exc:
-        _echo_error(f"ingest 失败: {exc}")
+    except (
+        IngestError,
+        ContractError,
+        FileExistsError,
+        FileNotFoundError,
+        KeyError,
+        ValueError,
+        OSError,
+    ) as exc:
+        _echo_error(f"ingest 失败: {type(exc).__name__}: {exc}")
+        return EXIT_RUNTIME_ERROR
+    except Exception as exc:  # noqa: BLE001 - CLI must not leak tracebacks/exit 1
+        _echo_error(f"ingest 运行失败（未预期异常）: {type(exc).__name__}: {exc}")
         return EXIT_RUNTIME_ERROR
     typer.echo(report.render_text())
-    if report.status != "PASS":
-        _echo_error(f"ingest 未通过（status={report.status}），详见 {report.report_json}")
+    if report.status == "FAIL":
+        _echo_error(f"ingest 未通过（status=FAIL），详见 {report.report_json}")
         return EXIT_RUNTIME_ERROR
+    if report.status == "CONDITIONAL_PASS":
+        typer.echo(
+            "result: CONDITIONAL_PASS（存在 NOT_RUN / 部分通过项，明细见报告；"
+            f"报告: {report.report_json}）"
+        )
+        return EXIT_OK
     typer.echo(f"result: PASS（报告: {report.report_json}）")
     return EXIT_OK
 

@@ -138,6 +138,25 @@ def test_ingest_config_requires_directory_for_local_era5(write_yaml):
     assert any("root" in error or "date_range" in error for error in check.errors)
 
 
+def test_local_netcdf_derive_is_rejected_not_ignored(write_yaml):
+    path = write_yaml(
+        "cloud_derive.yaml",
+        {
+            "project": {"name": "cloud"},
+            "source": {
+                "kind": "local_netcdf",
+                "input": "./cloud.nc",
+                "variable_map": {"clwc": "clwc"},
+                "derive": {"tcwv": {"method": "vertical_integral_q"}},
+            },
+            "output": {"processed_path": "./out.nc"},
+        },
+    )
+    check = validate_config_file(path, check_data=False)
+    assert not check.valid
+    assert any("derive.tcwv" in error for error in check.errors)
+
+
 def test_missing_file_raises_config_error(tmp_path):
     with pytest.raises(ConfigError):
         load_config_file(tmp_path / "missing.yaml")

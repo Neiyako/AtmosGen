@@ -532,6 +532,12 @@ class SourceConfig(_StrictModel):
         elif self.kind == "local_netcdf":
             if self.input is None:
                 problems.append("source.kind=local_netcdf 需要 input（源 NetCDF 路径）")
+            if self.derive is not None and self.derive.tcwv is not None:
+                problems.append(
+                    "source.kind=local_netcdf 暂不支持 derive.tcwv（Phase 1 只在 local_era5 上派生）："
+                    "请直接提供 tcwv 变量，或改用 source.kind=local_era5；"
+                    "不做静默忽略，避免配置合法但产物缺变量"
+                )
         elif self.kind == "cds":
             if not self.request:
                 problems.append("source.kind=cds 需要 request（CDS API 请求参数）")

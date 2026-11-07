@@ -8,6 +8,7 @@ import platform
 import random
 import shutil
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -57,7 +58,7 @@ def create_run_dir(
         raise FileExistsError(f"run directory already exists: {run_dir}")
     for sub in ("figures",):
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
-    (run_dir).mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
 
@@ -89,20 +90,33 @@ def _json_default(value: Any) -> Any:  # pragma: no cover - defensive serialisat
         return value.tolist()
     if isinstance(value, Path):
         return str(value)
-    if isinstance(value, (datetime,)):
+    if isinstance(value, datetime):
         return value.isoformat()
     raise TypeError(f"object of type {type(value).__name__} is not JSON serialisable")
 
 
 @dataclass
 class ResourceTracker:
-    """Measure wall time and peak RSS of one stage."""
+    """Measure wall time and peak RSS of one stage.
+
+    Peak RSS is sampled by a background thread every ``sample_interval_s``
+    seconds. ``ru_maxrss`` (process lifetime maximum, monotonic) is reported
+    alongside as ``process_max_rss_mb`` so the two can be cross-checked:
+    sampling can miss a very short allocation spike, while ``ru_maxrss`` may
+    include earlier stages of the same process.
+    """
 
     label: str = ""
     started_at: float = 0.0
     elapsed_seconds: float = 0.0
     peak_rss_mb: float = 0.0
+    process_max_rss_mb: float = 0.0
+    peak_rss_source: str = "sampled"
+    sample_interval_s: float = 0.05
     _process: Any = field(default=None, repr=False)
+    _stop_event: Any = field(default=None, repr=False)
+    _thread: Any = field(default=None, repr=False)
+    _max_rss_bytes: int = 0
 
     def start(self) -> "ResourceTracker":
         self.started_at = time.perf_counter()
@@ -110,18 +124,41 @@ class ResourceTracker:
             import psutil
 
             self._process = psutil.Process(os.getpid())
-            self._process.cpu_percent(None)
+            self._max_rss_bytes = int(self._process.memory_info().rss)
+            self._stop_event = threading.Event()
+            self._thread = threading.Thread(target=self._sample_loop, daemon=True)
+            self._thread.start()
         except Exception:
             self._process = None
+            self.peak_rss_source = "unavailable"
         return self
 
-    def stop(self) -> dict[str, float]:
-        self.elapsed_seconds = round(time.perf_counter() - self.started_at, 3)
-        if self._process is not None:
+    def _sample_loop(self) -> None:
+        while self._stop_event is not None and not self._stop_event.is_set():
             try:
-                self.peak_rss_mb = round(self._process.memory_info().rss / (1024**2), 1)
-            except Exception:
-                self.peak_rss_mb = 0.0
+                rss = int(self._process.memory_info().rss)
+            except Exception:  # pragma: no cover - process exiting
+                return
+            if rss > self._max_rss_bytes:
+                self._max_rss_bytes = rss
+            self._stop_event.wait(self.sample_interval_s)
+
+    def stop(self) -> dict[str, Any]:
+        self.elapsed_seconds = round(time.perf_counter() - self.started_at, 3)
+        if self._thread is not None and self._stop_event is not None:
+            self._stop_event.set()
+            self._thread.join(timeout=2.0)
+        self.peak_rss_mb = round(self._max_rss_bytes / (1024**2), 1)
+        try:
+            import resource
+
+            raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            # macOS reports bytes, Linux reports kilobytes
+            self.process_max_rss_mb = (
+                round(raw / (1024**2), 1) if sys.platform == "darwin" else round(raw / 1024, 1)
+            )
+        except Exception:  # pragma: no cover - platform specific
+            self.process_max_rss_mb = 0.0
         return self.as_dict()
 
     def as_dict(self) -> dict[str, Any]:
@@ -129,11 +166,13 @@ class ResourceTracker:
             "label": self.label,
             "elapsed_seconds": self.elapsed_seconds,
             "peak_rss_mb": self.peak_rss_mb,
+            "peak_rss_source": self.peak_rss_source,
+            "process_max_rss_mb": self.process_max_rss_mb,
         }
 
 
 def environment_snapshot() -> dict[str, Any]:
-    """Environment fingerprint recorded in run metadata (Test E support)."""
+    """Environment fingerprint recorded next to every run (Test E support)."""
 
     snapshot: dict[str, Any] = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -142,9 +181,9 @@ def environment_snapshot() -> dict[str, Any]:
         "executable": sys.executable,
     }
     try:
-        import xarray
         import numpy
         import pydantic
+        import xarray
 
         snapshot["numpy"] = numpy.__version__
         snapshot["xarray"] = xarray.__version__
@@ -166,6 +205,12 @@ def environment_snapshot() -> dict[str, Any]:
     return snapshot
 
 
+def write_environment_snapshot(run_dir: str | Path) -> Path:
+    """Persist :func:`environment_snapshot` as ``<run_dir>/environment.json``."""
+
+    return write_json(Path(run_dir) / "environment.json", environment_snapshot())
+
+
 __all__ = [
     "ResourceTracker",
     "create_run_dir",
@@ -173,5 +218,6 @@ __all__ = [
     "make_run_id",
     "set_global_seed",
     "snapshot_config",
+    "write_environment_snapshot",
     "write_json",
 ]

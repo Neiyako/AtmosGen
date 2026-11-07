@@ -12,7 +12,7 @@ import xarray as xr
 from atmosgen.config import IngestConfigFile, load_config_file
 from atmosgen.contract import read_contract
 from atmosgen.data.io import file_fingerprint, open_source
-from atmosgen.data.preprocess import derive_tcwv, ingest
+from atmosgen.data.preprocess import _overall_status, derive_tcwv, ingest
 
 GRAVITY = 9.80665
 
@@ -48,6 +48,13 @@ def _tiny_era5_file(path: Path, varname: str, *, seed: int, values: str = "dynam
         },
     )
     ds.to_netcdf(path, engine="netcdf4")
+
+
+def test_overall_status_never_upgrades_partial_pass():
+    assert _overall_status({"a": "PASS", "b": "PASS"}) == "PASS"
+    assert _overall_status({"a": "PASS", "b": "CONDITIONAL_PASS"}) == "CONDITIONAL_PASS"
+    assert _overall_status({"a": "PASS", "b": "NOT_RUN"}) == "CONDITIONAL_PASS"
+    assert _overall_status({"a": "PASS", "b": "FAIL"}) == "FAIL"
 
 
 def test_derive_tcwv_matches_analytic_constant_profile():

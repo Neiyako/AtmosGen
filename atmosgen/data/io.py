@@ -201,14 +201,13 @@ def _netcdf_encoding(
         if zlib:
             var_encoding["complevel"] = complevel
         if chunks:
-            dims = variable.dims
-            sizes = [int(chunks[d]) for d in dims if d in chunks]
-            if len(sizes) == len(dims):
-                var_encoding["chunksizes"] = tuple(sizes)
-            elif sizes:
-                # Partial chunk specs are ambiguous for NetCDF4; fall back to
-                # the first matching dimension size only when all dims are sized.
-                var_encoding.pop("chunksizes", None)
+            # Unspecified dimensions fall back to their full size, clamped to
+            # the actual dimension length so an over-large request is not an error.
+            chunksizes = tuple(
+                max(1, min(int(chunks.get(dim, ds.sizes[dim])), int(ds.sizes[dim])))
+                for dim in variable.dims
+            )
+            var_encoding["chunksizes"] = chunksizes
         encoding[name] = var_encoding
     return encoding
 
@@ -275,7 +274,7 @@ def save_canonical(
         if contract_doc is not None:
             import json
 
-            write_contract_file(target.parent / CONTRACT_FILENAME, json.loads(contract_doc))
+            write_contract_file(sidecar_contract_path(target), json.loads(contract_doc))
     return target
 
 
@@ -296,6 +295,20 @@ def read_canonical(
             ds.close()
             raise
     return ds
+
+
+def sidecar_contract_path(data_path: str | Path) -> Path:
+    """Path of the standalone contract file belonging to ``data_path``.
+
+    ``data.nc`` in a run directory keeps the schema-mandated ``contract.json``
+    name; any other dataset gets ``<stem>.contract.json`` so two datasets living
+    in the same directory cannot overwrite each other's sidecar.
+    """
+
+    target = Path(data_path)
+    if target.stem == "data":
+        return target.parent / CONTRACT_FILENAME
+    return target.parent / f"{target.stem}.contract.json"
 
 
 def _remove_target(path: Path) -> None:
@@ -329,4 +342,5 @@ __all__ = [
     "read_canonical",
     "resolve_path",
     "save_canonical",
+    "sidecar_contract_path",
 ]
